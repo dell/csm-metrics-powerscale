@@ -1,0 +1,12 @@
+
+isilonClusters:
+  - clusterName: "cluster1"
+    username: "username"
+    password: "isilon"
+    endpoint: "[serverip]"
+    endpointPort: [serverport]
+    isDefault: true
+    skipCertificateValidation: true
+    isiPath: "/ifs/data/test-goisilon"
+    isiVolumePathPermissions: "0777"
+    replicationCertificateID: ""

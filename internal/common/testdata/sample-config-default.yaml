@@ -1,0 +1,11 @@
+
+isilonClusters:
+- clusterName: "cluster1"
+  username: "username"
+  password: "isilon"
+  endpoint: "[serverip]"
+  endpointPort: [serverport]
+  isDefault: true
+  replicationCertificateID: ""
+- 
+
