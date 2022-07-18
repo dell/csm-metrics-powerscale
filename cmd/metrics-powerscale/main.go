@@ -193,39 +193,59 @@ func updateProvisionerNames(volumeFinder *k8s.VolumeFinder, storageClassFinder *
 }
 
 func updateMetricsEnabled(config *entrypoint.Config, logger *logrus.Logger) {
-	powerscaleVolumeMetricsEnabled := true
-	powerscaleVolumeMetricsEnabledValue := viper.GetString("POWERSCALE_VOLUME_METRICS_ENABLED")
-	if powerscaleVolumeMetricsEnabledValue == "false" {
-		powerscaleVolumeMetricsEnabled = false
+	capacityMetricsEnabled := true
+	capacityMetricsEnabledValue := viper.GetString("POWERSCALE_CAPACITY_METRICS_ENABLED")
+	if capacityMetricsEnabledValue == "false" {
+		capacityMetricsEnabled = false
 	}
-	config.VolumeMetricsEnabled = powerscaleVolumeMetricsEnabled
-	logger.WithField("volume_metrics_enabled", powerscaleVolumeMetricsEnabled).Debug("setting volume metrics enabled")
+	config.CapacityMetricsEnabled = capacityMetricsEnabled
+	logger.WithField("capacity_metrics_enabled", capacityMetricsEnabled).Debug("setting capacity metrics enabled")
+
+	performanceMetricsEnabled := true
+	performanceMetricsEnabledValue := viper.GetString("POWERSCALE_PERFORMANCE_METRICS_ENABLED")
+	if performanceMetricsEnabledValue == "false" {
+		performanceMetricsEnabled = false
+	}
+	config.PerformanceMetricsEnabled = performanceMetricsEnabled
+	logger.WithField("performance_metrics_enabled", performanceMetricsEnabled).Debug("setting performance metrics enabled")
 }
 
 func updateTickIntervals(config *entrypoint.Config, logger *logrus.Logger) {
-	volumeTickInterval := defaultTickInterval
-	volIoPollFrequencySeconds := viper.GetString("POWERSCALE_VOLUME_IO_POLL_FREQUENCY")
-	if volIoPollFrequencySeconds != "" {
-		numSeconds, err := strconv.Atoi(volIoPollFrequencySeconds)
+	quotaCapacityTickInterval := defaultTickInterval
+	quotaCapacityPollFrequencySeconds := viper.GetString("POWERSCALE_QUOTA_CAPACITY_POLL_FREQUENCY")
+	if quotaCapacityPollFrequencySeconds != "" {
+		numSeconds, err := strconv.Atoi(quotaCapacityPollFrequencySeconds)
 		if err != nil {
-			logger.WithError(err).Fatal("POWERSCALE_VOLUME_IO_POLL_FREQUENCY was not set to a valid number")
+			logger.WithError(err).Fatal("POWERSCALE_QUOTA_CAPACITY_POLL_FREQUENCY was not set to a valid number")
 		}
-		volumeTickInterval = time.Duration(numSeconds) * time.Second
+		quotaCapacityTickInterval = time.Duration(numSeconds) * time.Second
 	}
-	config.VolumeTickInterval = volumeTickInterval
-	logger.WithField("volume_tick_interval", fmt.Sprintf("%v", volumeTickInterval)).Debug("setting volume tick interval")
+	config.QuotaCapacityTickInterval = quotaCapacityTickInterval
+	logger.WithField("quota_capacity_tick_interval", fmt.Sprintf("%v", quotaCapacityTickInterval)).Debug("setting quota capacity tick interval")
 
-	clusterTickInterval := defaultTickInterval
-	clusterPollFrequencySeconds := viper.GetString("POWERSCALE_CLUSTER_POLL_FREQUENCY")
-	if clusterPollFrequencySeconds != "" {
-		numSeconds, err := strconv.Atoi(clusterPollFrequencySeconds)
+	clusterCapacityTickInterval := defaultTickInterval
+	clusterCapacityPollFrequencySeconds := viper.GetString("POWERSCALE_CLUSTER_CAPACITY_POLL_FREQUENCY")
+	if clusterCapacityPollFrequencySeconds != "" {
+		numSeconds, err := strconv.Atoi(clusterCapacityPollFrequencySeconds)
 		if err != nil {
-			logger.WithError(err).Fatal("POWERSCALE_CLUSTER_POLL_FREQUENCY was not set to a valid number")
+			logger.WithError(err).Fatal("POWERSCALE_CLUSTER_CAPACITY_POLL_FREQUENCY was not set to a valid number")
 		}
-		clusterTickInterval = time.Duration(numSeconds) * time.Second
+		clusterCapacityTickInterval = time.Duration(numSeconds) * time.Second
 	}
-	config.ClusterTickInterval = clusterTickInterval
-	logger.WithField("cluster_tick_interval", fmt.Sprintf("%v", clusterTickInterval)).Debug("setting cluster tick interval")
+	config.ClusterCapacityTickInterval = clusterCapacityTickInterval
+	logger.WithField("cluster_capacity_tick_interval", fmt.Sprintf("%v", clusterCapacityTickInterval)).Debug("setting cluster capacity tick interval")
+
+	clusterPerformanceTickInterval := defaultTickInterval
+	clusterPerformancePollFrequencySeconds := viper.GetString("POWERSCALE_CLUSTER_PERFORMANCE_POLL_FREQUENCY")
+	if clusterPerformancePollFrequencySeconds != "" {
+		numSeconds, err := strconv.Atoi(clusterPerformancePollFrequencySeconds)
+		if err != nil {
+			logger.WithError(err).Fatal("POWERSCALE_CLUSTER_PERFORMANCE_POLL_FREQUENCY was not set to a valid number")
+		}
+		clusterPerformanceTickInterval = time.Duration(numSeconds) * time.Second
+	}
+	config.ClusterPerformanceTickInterval = clusterPerformanceTickInterval
+	logger.WithField("cluster_performance_tick_interval", fmt.Sprintf("%v", clusterPerformanceTickInterval)).Debug("setting cluster performance tick interval")
 }
 
 func updateService(pscaleSvc *service.PowerScaleService, logger *logrus.Logger) {

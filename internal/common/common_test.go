@@ -44,7 +44,7 @@ func Test_Run(t *testing.T) {
 		"no cluster name": func(*testing.T) (string, bool) {
 			return "testdata/no-cluster-name.yaml", true
 		},
-		"conection failed": func(*testing.T) (string, bool) {
+		"connection failed": func(*testing.T) (string, bool) {
 			return "testdata/connection-failed.yaml", true
 		},
 	}

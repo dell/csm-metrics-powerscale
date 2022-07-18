@@ -1,0 +1,68 @@
+{
+  "stats": [
+    {
+      "devid": 0,
+      "error": null,
+      "error_code": null,
+      "key": "ifs.bytes.avail",
+      "time": 1655808644,
+      "value": 171467464704
+    },
+    {
+      "devid": 0,
+      "error": null,
+      "error_code": null,
+      "key": "ifs.bytes.used",
+      "time": 1655808644,
+      "value": 9029296128
+    },
+    {
+      "devid": 0,
+      "error": null,
+      "error_code": null,
+      "key": "ifs.bytes.total",
+      "time": 1655808644,
+      "value": 252239708160
+    },
+    {
+      "devid": 0,
+      "error": null,
+      "error_code": null,
+      "key": "cluster.cpu.sys.avg",
+      "time": 1655808644,
+      "value": 135
+    },
+    {
+      "devid": 0,
+      "error": null,
+      "error_code": null,
+      "key": "cluster.disk.xfers.in.rate",
+      "time": 1655808644,
+      "value": 2.30
+    },
+    {
+      "devid": 0,
+      "error": null,
+      "error_code": null,
+      "key": "cluster.disk.xfers.out.rate",
+      "time": 1655808644,
+      "value": 0.0
+    },
+    {
+      "devid": 0,
+      "error": null,
+      "error_code": null,
+      "key": "cluster.disk.bytes.in.rate",
+      "time": 1655808644,
+      "value": 14950.40
+    },
+    {
+      "devid": 0,
+      "error": null,
+      "error_code": null,
+      "key": "cluster.disk.bytes.out.rate",
+      "time": 1655808644,
+      "value": 0.0
+    }
+  ]
+}

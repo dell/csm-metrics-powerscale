@@ -34,16 +34,28 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 	return m.recorder
 }
 
-// ExportClusterMetrics mocks base method.
-func (m *MockService) ExportClusterMetrics(arg0 context.Context) {
+// ExportClusterCapacityMetrics mocks base method.
+func (m *MockService) ExportClusterCapacityMetrics(arg0 context.Context) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ExportClusterMetrics", arg0)
+	m.ctrl.Call(m, "ExportClusterCapacityMetrics", arg0)
 }
 
-// ExportClusterMetrics indicates an expected call of ExportClusterMetrics.
-func (mr *MockServiceMockRecorder) ExportClusterMetrics(arg0 interface{}) *gomock.Call {
+// ExportClusterCapacityMetrics indicates an expected call of ExportClusterCapacityMetrics.
+func (mr *MockServiceMockRecorder) ExportClusterCapacityMetrics(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportClusterMetrics", reflect.TypeOf((*MockService)(nil).ExportClusterMetrics), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportClusterCapacityMetrics", reflect.TypeOf((*MockService)(nil).ExportClusterCapacityMetrics), arg0)
+}
+
+// ExportClusterPerformanceMetrics mocks base method.
+func (m *MockService) ExportClusterPerformanceMetrics(arg0 context.Context) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ExportClusterPerformanceMetrics", arg0)
+}
+
+// ExportClusterPerformanceMetrics indicates an expected call of ExportClusterPerformanceMetrics.
+func (mr *MockServiceMockRecorder) ExportClusterPerformanceMetrics(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportClusterPerformanceMetrics", reflect.TypeOf((*MockService)(nil).ExportClusterPerformanceMetrics), arg0)
 }
 
 // ExportVolumeMetrics mocks base method.

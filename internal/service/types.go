@@ -14,14 +14,16 @@ import (
 
 // VolumeMeta is the details of a volume in an SDC
 type VolumeMeta struct {
-	ID                   string
-	PersistentVolumeName string
-	ClusterName          string
-	ExportID             string
-	AccessZone           string
-	StorageClass         string
-	Driver               string
-	IsiPath              string
+	ID                        string
+	PersistentVolumeName      string
+	ClusterName               string
+	ExportID                  string
+	AccessZone                string
+	StorageClass              string
+	Driver                    string
+	IsiPath                   string
+	PersistentVolumeClaimName string
+	NameSpace                 string
 }
 
 // PowerScaleCluster is a struct that stores all PowerScale connection information.
