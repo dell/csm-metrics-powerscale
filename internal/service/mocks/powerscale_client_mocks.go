@@ -35,32 +35,47 @@ func (m *MockPowerScaleClient) EXPECT() *MockPowerScaleClientMockRecorder {
 	return m.recorder
 }
 
-// GetStatistics mocks base method.
-func (m *MockPowerScaleClient) GetStatistics(arg0 context.Context, arg1 []string) (goisilon.Stats, error) {
+// GetAllQuotas mocks base method.
+func (m *MockPowerScaleClient) GetAllQuotas(arg0 context.Context) (goisilon.QuotaList, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetStatistics", arg0, arg1)
-	ret0, _ := ret[0].(goisilon.Stats)
+	ret := m.ctrl.Call(m, "GetAllQuotas", arg0)
+	ret0, _ := ret[0].(goisilon.QuotaList)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetStatistics indicates an expected call of GetStatistics.
-func (mr *MockPowerScaleClientMockRecorder) GetStatistics(arg0, arg1 interface{}) *gomock.Call {
+// GetAllQuotas indicates an expected call of GetAllQuotas.
+func (mr *MockPowerScaleClientMockRecorder) GetAllQuotas(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStatistics", reflect.TypeOf((*MockPowerScaleClient)(nil).GetStatistics), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllQuotas", reflect.TypeOf((*MockPowerScaleClient)(nil).GetAllQuotas), arg0)
 }
 
-// GetVolumeSize mocks base method.
-func (m *MockPowerScaleClient) GetVolumeSize(arg0 context.Context, arg1, arg2 string) (int64, error) {
+// GetFloatStatistics mocks base method.
+func (m *MockPowerScaleClient) GetFloatStatistics(arg0 context.Context, arg1 []string) (goisilon.FloatStats, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetVolumeSize", arg0, arg1, arg2)
-	ret0, _ := ret[0].(int64)
+	ret := m.ctrl.Call(m, "GetFloatStatistics", arg0, arg1)
+	ret0, _ := ret[0].(goisilon.FloatStats)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetVolumeSize indicates an expected call of GetVolumeSize.
-func (mr *MockPowerScaleClientMockRecorder) GetVolumeSize(arg0, arg1, arg2 interface{}) *gomock.Call {
+// GetFloatStatistics indicates an expected call of GetFloatStatistics.
+func (mr *MockPowerScaleClientMockRecorder) GetFloatStatistics(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetVolumeSize", reflect.TypeOf((*MockPowerScaleClient)(nil).GetVolumeSize), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFloatStatistics", reflect.TypeOf((*MockPowerScaleClient)(nil).GetFloatStatistics), arg0, arg1)
+}
+
+// GetQuotaWithPath mocks base method.
+func (m *MockPowerScaleClient) GetQuotaWithPath(arg0 context.Context, arg1 string) (goisilon.Quota, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetQuotaWithPath", arg0, arg1)
+	ret0, _ := ret[0].(goisilon.Quota)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetQuotaWithPath indicates an expected call of GetQuotaWithPath.
+func (mr *MockPowerScaleClientMockRecorder) GetQuotaWithPath(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetQuotaWithPath", reflect.TypeOf((*MockPowerScaleClient)(nil).GetQuotaWithPath), arg0, arg1)
 }

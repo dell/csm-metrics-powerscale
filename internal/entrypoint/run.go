@@ -41,13 +41,15 @@ var (
 
 // Config holds data that will be used by the service
 type Config struct {
-	VolumeTickInterval   time.Duration
-	ClusterTickInterval  time.Duration
-	LeaderElector        pscaleService.LeaderElector
-	VolumeMetricsEnabled bool
-	CollectorAddress     string
-	CollectorCertPath    string
-	Logger               *logrus.Logger
+	LeaderElector                  pscaleService.LeaderElector
+	ClusterCapacityTickInterval    time.Duration
+	ClusterPerformanceTickInterval time.Duration
+	QuotaCapacityTickInterval      time.Duration
+	CapacityMetricsEnabled         bool
+	PerformanceMetricsEnabled      bool
+	CollectorAddress               string
+	CollectorCertPath              string
+	Logger                         *logrus.Logger
 }
 
 // Run is the entry point for starting the service
@@ -95,35 +97,47 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	//set initial tick intervals
-	VolumeTickInterval := config.VolumeTickInterval
-	volumeTicker := time.NewTicker(VolumeTickInterval)
-	ClusterTickInterval := config.ClusterTickInterval
-	clusterTicker := time.NewTicker(ClusterTickInterval)
+	// set initial tick intervals
+	ClusterCapacityTickInterval := config.ClusterCapacityTickInterval
+	clusterCapacityTicker := time.NewTicker(ClusterCapacityTickInterval)
+	ClusterPerformanceTickInterval := config.ClusterPerformanceTickInterval
+	clusterPerformanceTicker := time.NewTicker(ClusterPerformanceTickInterval)
+	QuotaCapacityTickInterval := config.QuotaCapacityTickInterval
+	quotaCapacityTicker := time.NewTicker(QuotaCapacityTickInterval)
 
 	for {
 		select {
-		case <-volumeTicker.C:
+		case <-clusterCapacityTicker.C:
 			if !config.LeaderElector.IsLeader() {
 				logger.Info("not leader pod to collect metrics")
 				continue
 			}
-			if !config.VolumeMetricsEnabled {
-				logger.Info("powerscale volume metrics collection is disabled")
+			if !config.CapacityMetricsEnabled {
+				logger.Info("powerscale cluster capacity metrics collection is disabled")
 				continue
 			}
 
-			powerScaleSvc.ExportVolumeMetrics(ctx)
-		case <-clusterTicker.C:
+			powerScaleSvc.ExportClusterCapacityMetrics(ctx)
+		case <-clusterPerformanceTicker.C:
 			if !config.LeaderElector.IsLeader() {
 				logger.Info("not leader pod to collect metrics")
 				continue
 			}
-			if !config.VolumeMetricsEnabled {
-				logger.Info("powerscale cluster metrics collection is disabled")
+			if !config.PerformanceMetricsEnabled {
+				logger.Info("powerscale cluster performance metrics collection is disabled")
 				continue
 			}
-			powerScaleSvc.ExportClusterMetrics(ctx)
+			powerScaleSvc.ExportClusterPerformanceMetrics(ctx)
+		case <-quotaCapacityTicker.C:
+			if !config.LeaderElector.IsLeader() {
+				logger.Info("not leader pod to collect metrics")
+				continue
+			}
+			if !config.CapacityMetricsEnabled {
+				logger.Info("powerscale quota capacity metrics collection is disabled")
+				continue
+			}
+			powerScaleSvc.ExportVolumeMetrics(ctx)
 		case err := <-errCh:
 			if err == nil {
 				continue
@@ -133,14 +147,18 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 			return nil
 		}
 
-		//check if tick interval config settings have changed
-		if VolumeTickInterval != config.VolumeTickInterval {
-			VolumeTickInterval = config.VolumeTickInterval
-			volumeTicker = time.NewTicker(VolumeTickInterval)
+		// check if tick interval config settings have changed
+		if ClusterCapacityTickInterval != config.ClusterCapacityTickInterval {
+			ClusterCapacityTickInterval = config.ClusterCapacityTickInterval
+			clusterCapacityTicker = time.NewTicker(ClusterCapacityTickInterval)
 		}
-		if ClusterTickInterval != config.ClusterTickInterval {
-			ClusterTickInterval = config.ClusterTickInterval
-			clusterTicker = time.NewTicker(ClusterTickInterval)
+		if ClusterPerformanceTickInterval != config.ClusterPerformanceTickInterval {
+			ClusterPerformanceTickInterval = config.ClusterPerformanceTickInterval
+			clusterPerformanceTicker = time.NewTicker(ClusterPerformanceTickInterval)
+		}
+		if QuotaCapacityTickInterval != config.QuotaCapacityTickInterval {
+			QuotaCapacityTickInterval = config.QuotaCapacityTickInterval
+			quotaCapacityTicker = time.NewTicker(QuotaCapacityTickInterval)
 		}
 	}
 }
@@ -151,12 +169,16 @@ func ValidateConfig(config *Config) error {
 		return fmt.Errorf("no config provided")
 	}
 
-	if config.VolumeTickInterval > MaximumTickInterval || config.VolumeTickInterval < MinimumTickInterval {
-		return fmt.Errorf("volume polling frequency not within allowed range of %v and %v", MinimumTickInterval.String(), MaximumTickInterval.String())
+	if config.ClusterCapacityTickInterval > MaximumTickInterval || config.ClusterCapacityTickInterval < MinimumTickInterval {
+		return fmt.Errorf("cluster capacity polling frequency not within allowed range of %v and %v", MinimumTickInterval.String(), MaximumTickInterval.String())
 	}
 
-	if config.ClusterTickInterval > MaximumTickInterval || config.ClusterTickInterval < MinimumTickInterval {
-		return fmt.Errorf("cluster polling frequency not within allowed range of %v and %v", MinimumTickInterval.String(), MaximumTickInterval.String())
+	if config.ClusterPerformanceTickInterval > MaximumTickInterval || config.ClusterPerformanceTickInterval < MinimumTickInterval {
+		return fmt.Errorf("cluster performance polling frequency not within allowed range of %v and %v", MinimumTickInterval.String(), MaximumTickInterval.String())
+	}
+
+	if config.QuotaCapacityTickInterval > MaximumTickInterval || config.QuotaCapacityTickInterval < MinimumTickInterval {
+		return fmt.Errorf("quota capacity polling frequency not within allowed range of %v and %v", MinimumTickInterval.String(), MaximumTickInterval.String())
 	}
 
 	return nil

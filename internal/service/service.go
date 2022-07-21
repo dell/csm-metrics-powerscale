@@ -34,15 +34,18 @@ const (
 //go:generate mockgen -destination=mocks/service_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service Service
 type Service interface {
 	ExportVolumeMetrics(context.Context)
-	ExportClusterMetrics(context.Context)
+	ExportClusterCapacityMetrics(context.Context)
+	ExportClusterPerformanceMetrics(context.Context)
 }
 
 // PowerScaleClient contains operations for accessing the PowerScale API
 //go:generate mockgen -destination=mocks/powerscale_client_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service PowerScaleClient
 type PowerScaleClient interface {
-	GetStatistics(ctx context.Context, keys []string) (goisilon.Stats, error)
-	//return bytes size of Volume
-	GetVolumeSize(ctx context.Context, isiPath, name string) (int64, error)
+	GetFloatStatistics(ctx context.Context, keys []string) (goisilon.FloatStats, error)
+	GetAllQuotas(ctx context.Context) (goisilon.QuotaList, error)
+
+	// GetQuotaWithPath returns Quota data by path
+	GetQuotaWithPath(ctx context.Context, path string) (goisilon.Quota, error)
 }
 
 // PowerScaleService represents the service for getting metrics data for a PowerScale system
@@ -76,10 +79,31 @@ type LeaderElector interface {
 	IsLeader() bool
 }
 
+// ClusterCapacityStatsMetricsRecord used for holding output of the capacity statistics for cluster
+type ClusterCapacityStatsMetricsRecord struct {
+	ClusterName       string
+	TotalCapacity     float64
+	RemainingCapacity float64
+	UsedPercentage    float64
+}
+
+// ClusterPerformanceStatsMetricsRecord used for holding output of the performance statistics for cluster
+type ClusterPerformanceStatsMetricsRecord struct {
+	ClusterName                       string
+	CPUPercentage                     float64
+	DiskReadOperationsRate            float64
+	DiskWriteOperationsRate           float64
+	DiskReadThroughputRate            float64
+	DiskWriteThroughputRate           float64
+	DirectoryTotalHardQuota           float64
+	DirectoryTotalHardQuotaPercentage float64
+}
+
 // VolumeMetricsRecord used for holding output of the Volume stat query results
 type VolumeMetricsRecord struct {
-	volumeMeta   *VolumeMeta
-	usedCapacity int64
+	volumeMeta         *VolumeMeta
+	quotaSubscribed    int64
+	hardQuotaRemaining int64
 }
 
 // ExportVolumeMetrics records space metrics for the given list of Volumes
@@ -148,7 +172,7 @@ func (s *PowerScaleService) gatherVolumeMetrics(ctx context.Context, volumes <-c
 					<-sem
 				}()
 
-				//volumeName=_=_=exportID=_=_=accessZone=_=_=clusterName
+				// volumeName=_=_=exportID=_=_=accessZone=_=_=clusterName
 				// VolumeHandle is of the format "volumeHandle: k8s-2217be0fe2=_=_=5=_=_=System=_=_=PIE-Isilon-X"
 				volumeProperties := strings.Split(volume.VolumeHandle, "=_=_=")
 				if len(volumeProperties) != ExpectedVolumeHandleProperties {
@@ -162,14 +186,16 @@ func (s *PowerScaleService) gatherVolumeMetrics(ctx context.Context, volumes <-c
 				clusterName := volumeProperties[3]
 
 				volumeMeta := &VolumeMeta{
-					ID:                   volumeID,
-					PersistentVolumeName: volume.PersistentVolume,
-					ClusterName:          clusterName,
-					AccessZone:           accessZone,
-					ExportID:             exportID,
-					StorageClass:         volume.StorageClass,
-					Driver:               volume.Driver,
-					IsiPath:              volume.IsiPath,
+					ID:                        volume.VolumeHandle,
+					PersistentVolumeName:      volume.PersistentVolume,
+					ClusterName:               clusterName,
+					AccessZone:                accessZone,
+					ExportID:                  exportID,
+					StorageClass:              volume.StorageClass,
+					Driver:                    volume.Driver,
+					IsiPath:                   volume.IsiPath,
+					PersistentVolumeClaimName: volume.VolumeClaimName,
+					NameSpace:                 volume.Namespace,
 				}
 
 				if volumeMeta.IsiPath == "" {
@@ -190,20 +216,26 @@ func (s *PowerScaleService) gatherVolumeMetrics(ctx context.Context, volumes <-c
 					return
 				}
 
-				volUsedInBytes, err := goPowerScaleClient.GetVolumeSize(ctx, volumeMeta.IsiPath, volumeID)
+				path := volumeMeta.IsiPath + "/" + volumeID
+				volQuota, err := goPowerScaleClient.GetQuotaWithPath(ctx, path)
 				if err != nil {
-					s.Logger.WithError(err).WithField("volume_id", volumeMeta.ID).Error("getting volume size")
+					s.Logger.WithError(err).WithField("volume_id", volumeMeta.ID).Error("getting quota metrics")
 					return
 				}
 
+				subscribedQuota := volQuota.Usage.Logical
+				hardQuotaRemaining := volQuota.Thresholds.Hard - volQuota.Usage.Logical
+
 				s.Logger.WithFields(logrus.Fields{
-					"volume_meta":    volumeMeta,
-					"vol_used_bytes": volUsedInBytes,
-				}).Debug("volume metrics")
+					"volume_meta":                          volumeMeta,
+					"quota_subscribed_gigabytes":           subscribedQuota,
+					"quota_hard_quato_remaining_gigabytes": hardQuotaRemaining,
+				}).Debug("volume quota metrics")
 
 				ch <- &VolumeMetricsRecord{
-					volumeMeta:   volumeMeta,
-					usedCapacity: volUsedInBytes,
+					volumeMeta:         volumeMeta,
+					quotaSubscribed:    subscribedQuota,
+					hardQuotaRemaining: hardQuotaRemaining,
 				}
 			}(volume)
 		}
@@ -227,9 +259,10 @@ func (s *PowerScaleService) pushVolumeMetrics(ctx context.Context, volumeMetrics
 			wg.Add(1)
 			go func(metrics *VolumeMetricsRecord) {
 				defer wg.Done()
-				err := s.MetricsWrapper.Record(ctx,
+				err := s.MetricsWrapper.RecordVolumeSpace(ctx,
 					metrics.volumeMeta,
-					metrics.usedCapacity,
+					metrics.quotaSubscribed,
+					metrics.hardQuotaRemaining,
 				)
 				if err != nil {
 					s.Logger.WithError(err).WithField("volume_id", metrics.volumeMeta.ID).Error("recording metrics for volume")
@@ -269,13 +302,13 @@ func (s *PowerScaleService) timeSince(start time.Time, fName string) {
 	}).Info("function duration")
 }
 
-// ExportClusterMetrics records cluster metrics(I/O or capacity)
-func (s *PowerScaleService) ExportClusterMetrics(ctx context.Context) {
+// ExportClusterCapacityMetrics records cluster capacity metrics
+func (s *PowerScaleService) ExportClusterCapacityMetrics(ctx context.Context) {
 	start := time.Now()
-	defer s.timeSince(start, "ExportClusterMetrics")
+	defer s.timeSince(start, "ExportClusterCapacityMetrics")
 
 	if s.MetricsWrapper == nil {
-		s.Logger.Warn("no MetricsWrapper provided for getting ExportClusterMetrics")
+		s.Logger.Warn("no MetricsWrapper provided for getting ExportClusterCapacityMetrics")
 		return
 	}
 
@@ -284,5 +317,221 @@ func (s *PowerScaleService) ExportClusterMetrics(ctx context.Context) {
 		s.MaxPowerScaleConnections = DefaultMaxPowerScaleConnections
 	}
 
-	s.Logger.Warning("Not supported, skip export Cluster metrics")
+	for range s.pushClusterCapacityStatsMetrics(ctx, s.gatherClusterCapacityStatsMetrics(ctx)) {
+		// consume the channel until it is empty and closed
+	}
+}
+
+// gatherClusterStatsMetrics will return a channel of array statistics metric
+func (s *PowerScaleService) gatherClusterCapacityStatsMetrics(ctx context.Context) <-chan *ClusterCapacityStatsMetricsRecord {
+	start := time.Now()
+	defer s.timeSince(start, "gatherClusterCapacityStatsMetrics")
+
+	ch := make(chan *ClusterCapacityStatsMetricsRecord)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, s.MaxPowerScaleConnections)
+
+	type StatsKeyFunc func(metric *ClusterCapacityStatsMetricsRecord, value float64)
+	var statsKeyFuncMap = map[string]StatsKeyFunc{
+		"ifs.bytes.total": func(metric *ClusterCapacityStatsMetricsRecord, value float64) {
+			metric.TotalCapacity = value
+		},
+		"ifs.bytes.avail": func(metric *ClusterCapacityStatsMetricsRecord, value float64) {
+			metric.RemainingCapacity = value
+		},
+	}
+
+	// get all stats keys that will be used as REST query string
+	statsKeys := make([]string, 0, len(statsKeyFuncMap))
+	for k := range statsKeyFuncMap {
+		statsKeys = append(statsKeys, k)
+	}
+
+	go func() {
+		for clusterName, goPowerScaleClient := range s.PowerScaleClients {
+			sem <- struct{}{}
+			wg.Add(1)
+			go func(clusterName string, goPowerScaleClient PowerScaleClient) {
+				defer func() {
+					wg.Done()
+					<-sem
+				}()
+				stats, err := goPowerScaleClient.GetFloatStatistics(ctx, statsKeys)
+
+				if err != nil {
+					s.Logger.WithError(err).WithField("cluster_name", clusterName).Error("getting capacity stats for cluster")
+					return
+				}
+
+				metric := &ClusterCapacityStatsMetricsRecord{
+					ClusterName: clusterName,
+				}
+
+				for _, st := range stats.StatsList {
+					function, ok := statsKeyFuncMap[st.Key]
+					if ok {
+						function(metric, st.Value)
+					}
+				}
+
+				ch <- metric
+				s.Logger.Debugf("cluster capacity stats metrics %+v", *metric)
+			}(clusterName, goPowerScaleClient)
+		}
+		wg.Wait()
+		close(sem)
+		close(ch)
+	}()
+
+	return ch
+}
+
+// pushClusterStatsMetrics will push the provided channel of cluster stats metrics to a data collector
+func (s *PowerScaleService) pushClusterCapacityStatsMetrics(ctx context.Context, clusterStatistics <-chan *ClusterCapacityStatsMetricsRecord) <-chan *ClusterCapacityStatsMetricsRecord {
+	start := time.Now()
+	defer s.timeSince(start, "pushClusterCapacityStatsMetrics")
+	var wg sync.WaitGroup
+
+	ch := make(chan *ClusterCapacityStatsMetricsRecord)
+	go func() {
+
+		for m := range clusterStatistics {
+			wg.Add(1)
+			go func(metric *ClusterCapacityStatsMetricsRecord) {
+				defer wg.Done()
+				err := s.MetricsWrapper.RecordClusterCapacityStatsMetrics(ctx, metric)
+				if err != nil {
+					s.Logger.WithError(err).Errorf("recording capcity stats for PowerScale cluster, metric=%+v", *metric)
+				}
+
+				ch <- metric
+			}(m)
+		}
+		wg.Wait()
+		close(ch)
+	}()
+
+	return ch
+}
+
+// ExportClusterPerformanceMetrics records cluster performance metrics
+func (s *PowerScaleService) ExportClusterPerformanceMetrics(ctx context.Context) {
+	start := time.Now()
+	defer s.timeSince(start, "ExportClusterPerformanceMetrics")
+
+	if s.MetricsWrapper == nil {
+		s.Logger.Warn("no MetricsWrapper provided for getting ExportClusterPerformanceMetrics")
+		return
+	}
+
+	if s.MaxPowerScaleConnections == 0 {
+		s.Logger.Debug("Using DefaultMaxPowerScaleConnections")
+		s.MaxPowerScaleConnections = DefaultMaxPowerScaleConnections
+	}
+
+	for range s.pushClusterPerformanceStatsMetrics(ctx, s.gatherClusterPerformanceStatsMetrics(ctx)) {
+		// consume the channel until it is empty and closed
+	}
+}
+
+// gatherClusterPerformanceStatsMetrics will return a channel of array statistics metric
+func (s *PowerScaleService) gatherClusterPerformanceStatsMetrics(ctx context.Context) <-chan *ClusterPerformanceStatsMetricsRecord {
+	start := time.Now()
+	defer s.timeSince(start, "gatherClusterPerformanceStatsMetrics")
+
+	ch := make(chan *ClusterPerformanceStatsMetricsRecord)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, s.MaxPowerScaleConnections)
+
+	type StatsKeyFunc func(metric *ClusterPerformanceStatsMetricsRecord, value float64)
+	var statsKeyFuncMap = map[string]StatsKeyFunc{
+		// Cluster average of system CPU usage in tenths of a percent
+		"cluster.cpu.sys.avg": func(metric *ClusterPerformanceStatsMetricsRecord, value float64) {
+			metric.CPUPercentage = value
+		},
+		"cluster.disk.xfers.out.rate": func(metric *ClusterPerformanceStatsMetricsRecord, value float64) {
+			metric.DiskReadOperationsRate = value
+		},
+		"cluster.disk.xfers.in.rate": func(metric *ClusterPerformanceStatsMetricsRecord, value float64) {
+			metric.DiskWriteOperationsRate = value
+		},
+		"cluster.disk.bytes.out.rate": func(metric *ClusterPerformanceStatsMetricsRecord, value float64) {
+			metric.DiskReadThroughputRate = value
+		},
+		"cluster.disk.bytes.in.rate": func(metric *ClusterPerformanceStatsMetricsRecord, value float64) {
+			metric.DiskWriteThroughputRate = value
+		},
+	}
+
+	// get all stats keys that will be used as REST query string
+	statsKeys := make([]string, 0, len(statsKeyFuncMap))
+	for k := range statsKeyFuncMap {
+		statsKeys = append(statsKeys, k)
+	}
+
+	go func() {
+		for clusterName, goPowerScaleClient := range s.PowerScaleClients {
+			sem <- struct{}{}
+			wg.Add(1)
+			go func(clusterName string, goPowerScaleClient PowerScaleClient) {
+				defer func() {
+					wg.Done()
+					<-sem
+				}()
+				stats, err := goPowerScaleClient.GetFloatStatistics(ctx, statsKeys)
+
+				if err != nil {
+					s.Logger.WithError(err).WithField("cluster_name", clusterName).Error("getting performance stats for cluster")
+					return
+				}
+
+				metric := &ClusterPerformanceStatsMetricsRecord{
+					ClusterName: clusterName,
+				}
+
+				for _, st := range stats.StatsList {
+					function, ok := statsKeyFuncMap[st.Key]
+					if ok {
+						function(metric, st.Value)
+					}
+				}
+
+				ch <- metric
+				s.Logger.Debugf("cluster performance stats metrics %+v", *metric)
+			}(clusterName, goPowerScaleClient)
+		}
+		wg.Wait()
+		close(sem)
+		close(ch)
+	}()
+
+	return ch
+}
+
+// pushClusterPerformanceStatsMetrics will push the provided channel of cluster performance stats metrics to a data collector
+func (s *PowerScaleService) pushClusterPerformanceStatsMetrics(ctx context.Context, clusterStatistics <-chan *ClusterPerformanceStatsMetricsRecord) <-chan *ClusterPerformanceStatsMetricsRecord {
+	start := time.Now()
+	defer s.timeSince(start, "pushClusterPerformanceStatsMetrics")
+	var wg sync.WaitGroup
+
+	ch := make(chan *ClusterPerformanceStatsMetricsRecord)
+	go func() {
+
+		for m := range clusterStatistics {
+			wg.Add(1)
+			go func(metric *ClusterPerformanceStatsMetricsRecord) {
+				defer wg.Done()
+				err := s.MetricsWrapper.RecordClusterPerformanceStatsMetrics(ctx, metric)
+				if err != nil {
+					s.Logger.WithError(err).Errorf("recording performance stats for PowerScale cluster, metric=%+v", *metric)
+				}
+
+				ch <- metric
+			}(m)
+		}
+		wg.Wait()
+		close(ch)
+	}()
+
+	return ch
 }
