@@ -12,7 +12,7 @@ import (
 	"github.com/dell/goisilon"
 )
 
-// VolumeMeta is the details of a volume in an SDC
+// VolumeMeta is the details of a volume
 type VolumeMeta struct {
 	ID                        string
 	PersistentVolumeName      string
@@ -23,7 +23,12 @@ type VolumeMeta struct {
 	Driver                    string
 	IsiPath                   string
 	PersistentVolumeClaimName string
-	NameSpace                 string
+	Namespace                 string
+}
+
+// ClusterMeta is the details of a cluster
+type ClusterMeta struct {
+	ClusterName string
 }
 
 // PowerScaleCluster is a struct that stores all PowerScale connection information.

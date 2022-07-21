@@ -21,7 +21,8 @@ import (
 // MetricsRecorder supports recording volume and cluster metric
 //go:generate mockgen -destination=mocks/metrics_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service MetricsRecorder,AsyncMetricCreator
 type MetricsRecorder interface {
-	RecordVolumeSpace(ctx context.Context, meta interface{}, subscribedQuota, hardQuota int64) error
+	RecordVolumeQuota(ctx context.Context, meta interface{}, metric *VolumeQuotaMetricsRecord) error
+	RecordClusterQuota(ctx context.Context, meta interface{}, metric *ClusterQuotaRecord) error
 	RecordClusterCapacityStatsMetrics(ctx context.Context, metric *ClusterCapacityStatsMetricsRecord) error
 	RecordClusterPerformanceStatsMetrics(ctx context.Context, metric *ClusterPerformanceStatsMetricsRecord) error
 }
@@ -41,12 +42,22 @@ type MetricsWrapper struct {
 	VolumeMetrics                  sync.Map
 	ClusterCapacityStatsMetrics    sync.Map
 	ClusterPerformanceStatsMetrics sync.Map
+	VolumeQuotaMetrics             sync.Map
+	ClusterQuotaMetrics            sync.Map
 }
 
-// VolumeSpaceMetrics contains the volume metrics data
-type VolumeSpaceMetrics struct {
-	QuotaSubscribed    asyncfloat64.UpDownCounter
-	HardQuotaRemaining asyncfloat64.UpDownCounter
+// VolumeQuotaMetrics contains volume quota metrics data
+type VolumeQuotaMetrics struct {
+	QuotaSubscribed       asyncfloat64.UpDownCounter
+	HardQuotaRemaining    asyncfloat64.UpDownCounter
+	QuotaSubscribedPct    asyncfloat64.UpDownCounter
+	HardQuotaRemainingPct asyncfloat64.UpDownCounter
+}
+
+// ClusterQuotaMetrics contains quota capacity in all directories
+type ClusterQuotaMetrics struct {
+	TotalHardQuotaGigabytes asyncfloat64.UpDownCounter
+	TotalHardQuotaPct       asyncfloat64.UpDownCounter
 }
 
 // ClusterCapacityStatsMetrics contains the capacity stats metrics related to a cluster
@@ -116,7 +127,65 @@ func updateLabels(prefix, metaID string, labels []attribute.KeyValue, mw *Metric
 	return metricsMapValue, nil
 }
 
-func (mw *MetricsWrapper) initVolumeMetrics(prefix, metaID string, labels []attribute.KeyValue) (*VolumeSpaceMetrics, error) {
+func (mw *MetricsWrapper) initClusterQuotaMetrics(prefix, metaID string, labels []attribute.KeyValue) (*ClusterQuotaMetrics, error) {
+	totalHardQuota, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "total_hard_quota_gigabytes")
+	if err != nil {
+		return nil, err
+	}
+	TotalHardQuotaPct, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "total_hard_quota_percentage")
+	if err != nil {
+		return nil, err
+	}
+
+	metrics := &ClusterQuotaMetrics{
+		TotalHardQuotaGigabytes: totalHardQuota,
+		TotalHardQuotaPct:       TotalHardQuotaPct,
+	}
+
+	mw.ClusterQuotaMetrics.Store(metaID, metrics)
+	mw.Labels.Store(metaID, labels)
+
+	return metrics, nil
+}
+
+// RecordClusterQuota will publish cluster Quota metrics data
+func (mw *MetricsWrapper) RecordClusterQuota(ctx context.Context, meta interface{}, metric *ClusterQuotaRecord) error {
+	var prefix string
+	var metaID string
+	var labels []attribute.KeyValue
+	switch v := meta.(type) {
+	case *ClusterMeta:
+		prefix, metaID = "powerscale_directory_", v.ClusterName
+		labels = []attribute.KeyValue{
+			attribute.String("ClusterName", v.ClusterName),
+			attribute.String("PlotWithMean", "No"),
+		}
+	default:
+		return errors.New("unknown MetaData type")
+	}
+
+	loadMetricsFunc := func(metaID string) (any, bool) {
+		return mw.ClusterQuotaMetrics.Load(metaID)
+	}
+
+	initMetricsFunc := func(prefix string, metaID string, labels []attribute.KeyValue) (any, error) {
+		return mw.initClusterQuotaMetrics(prefix, metaID, labels)
+	}
+
+	metricsMapValue, err := updateLabels(prefix, metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
+
+	if err != nil {
+		return err
+	}
+
+	metrics := metricsMapValue.(*ClusterQuotaMetrics)
+	metrics.TotalHardQuotaGigabytes.Observe(ctx, utils.UnitsConvert(metric.totalHardQuota, utils.BYTES, utils.GB), labels...)
+	metrics.TotalHardQuotaPct.Observe(ctx, metric.totalHardQuotaPct, labels...)
+
+	return nil
+}
+
+func (mw *MetricsWrapper) initVolumeQuotaMetrics(prefix, metaID string, labels []attribute.KeyValue) (*VolumeQuotaMetrics, error) {
 	quotaSubscribed, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "quota_subscribed_gigabytes")
 	if err != nil {
 		return nil, err
@@ -125,20 +194,30 @@ func (mw *MetricsWrapper) initVolumeMetrics(prefix, metaID string, labels []attr
 	if err != nil {
 		return nil, err
 	}
-
-	metrics := &VolumeSpaceMetrics{
-		QuotaSubscribed:    quotaSubscribed,
-		HardQuotaRemaining: hardQuotaRemaining,
+	quotaSubscribedPct, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "quota_subscribed_percentage")
+	if err != nil {
+		return nil, err
+	}
+	hardQuotaRemainingPct, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "hard_quota_remaining_percentage")
+	if err != nil {
+		return nil, err
 	}
 
-	mw.VolumeMetrics.Store(metaID, metrics)
+	metrics := &VolumeQuotaMetrics{
+		QuotaSubscribed:       quotaSubscribed,
+		HardQuotaRemaining:    hardQuotaRemaining,
+		QuotaSubscribedPct:    quotaSubscribedPct,
+		HardQuotaRemainingPct: hardQuotaRemainingPct,
+	}
+
+	mw.VolumeQuotaMetrics.Store(metaID, metrics)
 	mw.Labels.Store(metaID, labels)
 
 	return metrics, nil
 }
 
-// RecordVolumeSpace will publish volume metrics data
-func (mw *MetricsWrapper) RecordVolumeSpace(ctx context.Context, meta interface{}, subscribedQuota, hardQuotaRemaining int64) error {
+// RecordVolumeQuota will publish volume Quota metrics data
+func (mw *MetricsWrapper) RecordVolumeQuota(ctx context.Context, meta interface{}, metric *VolumeQuotaMetricsRecord) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -153,18 +232,18 @@ func (mw *MetricsWrapper) RecordVolumeSpace(ctx context.Context, meta interface{
 			attribute.String("StorageClass", v.StorageClass),
 			attribute.String("PlotWithMean", "No"),
 			attribute.String("PersistentVolumeClaim", v.PersistentVolumeClaimName),
-			attribute.String("PersistentVolumeNameSpace", v.NameSpace),
+			attribute.String("Namespace", v.Namespace),
 		}
 	default:
 		return errors.New("unknown MetaData type")
 	}
 
 	loadMetricsFunc := func(metaID string) (any, bool) {
-		return mw.VolumeMetrics.Load(metaID)
+		return mw.VolumeQuotaMetrics.Load(metaID)
 	}
 
 	initMetricsFunc := func(prefix string, metaID string, labels []attribute.KeyValue) (any, error) {
-		return mw.initVolumeMetrics(prefix, metaID, labels)
+		return mw.initVolumeQuotaMetrics(prefix, metaID, labels)
 	}
 
 	metricsMapValue, err := updateLabels(prefix, metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
@@ -173,9 +252,11 @@ func (mw *MetricsWrapper) RecordVolumeSpace(ctx context.Context, meta interface{
 		return err
 	}
 
-	metrics := metricsMapValue.(*VolumeSpaceMetrics)
-	metrics.QuotaSubscribed.Observe(ctx, utils.UnitsConvert(subscribedQuota, utils.BYTES, utils.GB), labels...)
-	metrics.HardQuotaRemaining.Observe(ctx, utils.UnitsConvert(hardQuotaRemaining, utils.BYTES, utils.GB), labels...)
+	metrics := metricsMapValue.(*VolumeQuotaMetrics)
+	metrics.QuotaSubscribed.Observe(ctx, utils.UnitsConvert(metric.quotaSubscribed, utils.BYTES, utils.GB), labels...)
+	metrics.HardQuotaRemaining.Observe(ctx, utils.UnitsConvert(metric.hardQuotaRemaining, utils.BYTES, utils.GB), labels...)
+	metrics.QuotaSubscribedPct.Observe(ctx, metric.quotaSubscribedPct, labels...)
+	metrics.HardQuotaRemainingPct.Observe(ctx, metric.hardQuotaRemainingPct, labels...)
 
 	return nil
 }

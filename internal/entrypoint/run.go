@@ -137,7 +137,7 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 				logger.Info("powerscale quota capacity metrics collection is disabled")
 				continue
 			}
-			powerScaleSvc.ExportVolumeMetrics(ctx)
+			powerScaleSvc.ExportQuotaMetrics(ctx)
 		case err := <-errCh:
 			if err == nil {
 				continue

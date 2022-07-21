@@ -28,12 +28,14 @@ const (
 	DefaultMaxPowerScaleConnections = 10
 	// ExpectedVolumeHandleProperties is the number of properties that the VolumeHandle contains
 	ExpectedVolumeHandleProperties = 4
+	// DirectoryQuotaType is the type of Quota corresponding to a volume
+	DirectoryQuotaType = "directory"
 )
 
 // Service contains operations that would be used to interact with a PowerScale system
 //go:generate mockgen -destination=mocks/service_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service Service
 type Service interface {
-	ExportVolumeMetrics(context.Context)
+	ExportQuotaMetrics(context.Context)
 	ExportClusterCapacityMetrics(context.Context)
 	ExportClusterPerformanceMetrics(context.Context)
 }
@@ -43,9 +45,6 @@ type Service interface {
 type PowerScaleClient interface {
 	GetFloatStatistics(ctx context.Context, keys []string) (goisilon.FloatStats, error)
 	GetAllQuotas(ctx context.Context) (goisilon.QuotaList, error)
-
-	// GetQuotaWithPath returns Quota data by path
-	GetQuotaWithPath(ctx context.Context, path string) (goisilon.Quota, error)
 }
 
 // PowerScaleService represents the service for getting metrics data for a PowerScale system
@@ -99,20 +98,29 @@ type ClusterPerformanceStatsMetricsRecord struct {
 	DirectoryTotalHardQuotaPercentage float64
 }
 
-// VolumeMetricsRecord used for holding output of the Volume stat query results
-type VolumeMetricsRecord struct {
-	volumeMeta         *VolumeMeta
-	quotaSubscribed    int64
-	hardQuotaRemaining int64
+// VolumeQuotaMetricsRecord used for holding output of the Volume stat query results
+type VolumeQuotaMetricsRecord struct {
+	volumeMeta            *VolumeMeta
+	quotaSubscribed       int64
+	hardQuotaRemaining    int64
+	quotaSubscribedPct    float64
+	hardQuotaRemainingPct float64
 }
 
-// ExportVolumeMetrics records space metrics for the given list of Volumes
-func (s *PowerScaleService) ExportVolumeMetrics(ctx context.Context) {
+// ClusterQuotaRecord used for holding output of the Volume stat query results
+type ClusterQuotaRecord struct {
+	clusterMeta       *ClusterMeta
+	totalHardQuota    int64
+	totalHardQuotaPct float64
+}
+
+// ExportQuotaMetrics records quota metrics for the given list of Volumes
+func (s *PowerScaleService) ExportQuotaMetrics(ctx context.Context) {
 	start := time.Now()
-	defer s.timeSince(start, "ExportVolumeMetrics")
+	defer s.timeSince(start, "ExportQuotaMetrics")
 
 	if s.MetricsWrapper == nil {
-		s.Logger.Warn("no MetricsWrapper provided for getting ExportVolumeMetrics")
+		s.Logger.Warn("no MetricsWrapper provided for getting ExportQuotaMetrics")
 		return
 	}
 
@@ -127,9 +135,143 @@ func (s *PowerScaleService) ExportVolumeMetrics(ctx context.Context) {
 		return
 	}
 
-	for range s.pushVolumeMetrics(ctx, s.gatherVolumeMetrics(ctx, s.volumeServer(ctx, pvs))) {
-		// consume the channel until it is empty and closed
+	cluster2Quotas := make(map[string]goisilon.QuotaList)
+	for clusterName, client := range s.PowerScaleClients {
+		quotaList, err := client.GetAllQuotas(ctx)
+		if err != nil {
+			s.Logger.WithError(err).WithField("cluster_name", clusterName).Error("getting quotas")
+			continue
+		}
+		cluster2Quotas[clusterName] = quotaList
 	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		for range s.pushVolumeQuotaMetrics(ctx, s.gatherVolumeQuotaMetrics(ctx, cluster2Quotas, s.volumeServer(ctx, pvs))) {
+			// consume the channel until it is empty and closed
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		for range s.pushClusterQuotaMetrics(ctx, s.gatherClusterQuotaMetrics(ctx, cluster2Quotas)) {
+			// consume the channel until it is empty and closed
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
+}
+
+// pushClusterQuotaMetrics will push the provided channel of cluster quota metrics to a data collector
+func (s *PowerScaleService) pushClusterQuotaMetrics(ctx context.Context, clusterQuotaMetrics <-chan *ClusterQuotaRecord) <-chan string {
+	start := time.Now()
+	defer s.timeSince(start, "pushClusterQuotaMetrics")
+	var wg sync.WaitGroup
+
+	ch := make(chan string)
+	go func() {
+		for metrics := range clusterQuotaMetrics {
+			wg.Add(1)
+			go func(metrics *ClusterQuotaRecord) {
+				defer wg.Done()
+				err := s.MetricsWrapper.RecordClusterQuota(ctx, metrics.clusterMeta, metrics)
+				if err != nil {
+					s.Logger.WithError(err).WithField("cluster_name", metrics.clusterMeta.ClusterName).Error("recording quota metrics for cluster")
+				} else {
+					ch <- fmt.Sprintf(metrics.clusterMeta.ClusterName)
+				}
+			}(metrics)
+		}
+		wg.Wait()
+		close(ch)
+	}()
+
+	return ch
+}
+
+// gatherClusterQuotaMetrics will return a channel of volume metrics based on the input of volumes
+func (s *PowerScaleService) gatherClusterQuotaMetrics(ctx context.Context, cluster2Quotas map[string]goisilon.QuotaList) <-chan *ClusterQuotaRecord {
+	start := time.Now()
+	defer s.timeSince(start, "gatherClusterQuotaMetrics")
+
+	ch := make(chan *ClusterQuotaRecord)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, s.MaxPowerScaleConnections)
+
+	go func() {
+		for clusterName := range s.PowerScaleClients {
+			sem <- struct{}{}
+			wg.Add(1)
+			meta := ClusterMeta{ClusterName: clusterName}
+			go func(meta ClusterMeta) {
+				defer func() {
+					wg.Done()
+					<-sem
+				}()
+				quotaList := cluster2Quotas[meta.ClusterName]
+				if len(quotaList) == 0 {
+					return
+				}
+				highestLevelQuotas := getHighestQuotas(quotaList)
+				totalHardQuota := int64(0)
+				totalHardQuotaUsage := int64(0)
+				for _, quota := range highestLevelQuotas {
+					totalHardQuota = totalHardQuota + quota.Thresholds.Hard
+					totalHardQuotaUsage = totalHardQuotaUsage + quota.Usage.Logical
+				}
+
+				totalHardQuotaPct := float64(0)
+				if totalHardQuota != 0 {
+					totalHardQuotaPct = float64(totalHardQuotaUsage) * 100.0 / float64(totalHardQuota)
+				}
+
+				metric := &ClusterQuotaRecord{
+					clusterMeta:       &meta,
+					totalHardQuota:    totalHardQuota,
+					totalHardQuotaPct: totalHardQuotaPct,
+				}
+				s.Logger.Debugf("cluster quota metrics %+v", *metric)
+
+				ch <- metric
+			}(meta)
+		}
+		wg.Wait()
+		close(ch)
+		close(sem)
+	}()
+	return ch
+}
+
+func getHighestQuotas(list goisilon.QuotaList) goisilon.QuotaList {
+	highestQuotas := make(goisilon.QuotaList, 0)
+	for _, quota := range list {
+		if quota.Type != DirectoryQuotaType {
+			continue
+		}
+		isSubLevel := false
+
+		for hIndex := 0; hIndex < len(highestQuotas); hIndex++ {
+			// current Quota's level is higher,remove current highest quota
+			if strings.Contains(highestQuotas[hIndex].Path, quota.Path+"/") {
+				if hIndex == len(highestQuotas)-1 {
+					highestQuotas = highestQuotas[:hIndex]
+				} else {
+					highestQuotas = append(highestQuotas[:hIndex], highestQuotas[hIndex+1:]...)
+				}
+				hIndex--
+			} else if strings.Contains(quota.Path, highestQuotas[hIndex].Path+"/") {
+				// current Quota is a children of known Quota
+				isSubLevel = true
+				break
+			}
+		}
+		if !isSubLevel {
+			highestQuotas = append(highestQuotas, quota)
+		}
+	}
+	return highestQuotas
 }
 
 // volumeServer will return a channel of volumes that can provide statistics about each volume
@@ -144,12 +286,13 @@ func (s *PowerScaleService) volumeServer(ctx context.Context, volumes []k8s.Volu
 	return volumeChannel
 }
 
-// gatherVolumeMetrics will return a channel of volume metrics based on the input of volumes
-func (s *PowerScaleService) gatherVolumeMetrics(ctx context.Context, volumes <-chan k8s.VolumeInfo) <-chan *VolumeMetricsRecord {
+// gatherVolumeQuotaMetrics will return a channel of volume metrics based on the input of volumes
+func (s *PowerScaleService) gatherVolumeQuotaMetrics(ctx context.Context, cluster2Quotas map[string]goisilon.QuotaList,
+	volumes <-chan k8s.VolumeInfo) <-chan *VolumeQuotaMetricsRecord {
 	start := time.Now()
-	defer s.timeSince(start, "gatherVolumeMetrics")
+	defer s.timeSince(start, "gatherVolumeQuotaMetrics")
 
-	ch := make(chan *VolumeMetricsRecord)
+	ch := make(chan *VolumeQuotaMetricsRecord)
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, s.MaxPowerScaleConnections)
 
@@ -195,7 +338,7 @@ func (s *PowerScaleService) gatherVolumeMetrics(ctx context.Context, volumes <-c
 					Driver:                    volume.Driver,
 					IsiPath:                   volume.IsiPath,
 					PersistentVolumeClaimName: volume.VolumeClaimName,
-					NameSpace:                 volume.Namespace,
+					Namespace:                 volume.Namespace,
 				}
 
 				if volumeMeta.IsiPath == "" {
@@ -210,15 +353,15 @@ func (s *PowerScaleService) gatherVolumeMetrics(ctx context.Context, volumes <-c
 					}
 				}
 
-				goPowerScaleClient, err := s.getPowerScaleClient(ctx, clusterName)
-				if err != nil {
-					s.Logger.WithError(err).WithField("cluster_name", clusterName).Warn("no client found for PowerScale with clsuter_name")
-					return
-				}
-
 				path := volumeMeta.IsiPath + "/" + volumeID
-				volQuota, err := goPowerScaleClient.GetQuotaWithPath(ctx, path)
-				if err != nil {
+				var volQuota goisilon.Quota
+				for _, q := range cluster2Quotas[clusterName] {
+					if q.Path == path && q.Type == DirectoryQuotaType {
+						volQuota = q
+						break
+					}
+				}
+				if volQuota == nil {
 					s.Logger.WithError(err).WithField("volume_id", volumeMeta.ID).Error("getting quota metrics")
 					return
 				}
@@ -226,17 +369,23 @@ func (s *PowerScaleService) gatherVolumeMetrics(ctx context.Context, volumes <-c
 				subscribedQuota := volQuota.Usage.Logical
 				hardQuotaRemaining := volQuota.Thresholds.Hard - volQuota.Usage.Logical
 
-				s.Logger.WithFields(logrus.Fields{
-					"volume_meta":                          volumeMeta,
-					"quota_subscribed_gigabytes":           subscribedQuota,
-					"quota_hard_quato_remaining_gigabytes": hardQuotaRemaining,
-				}).Debug("volume quota metrics")
-
-				ch <- &VolumeMetricsRecord{
-					volumeMeta:         volumeMeta,
-					quotaSubscribed:    subscribedQuota,
-					hardQuotaRemaining: hardQuotaRemaining,
+				subscribedQuotaPct := float64(0)
+				hardQuotaRemainingPct := float64(0)
+				if volQuota.Thresholds.Hard != 0 {
+					subscribedQuotaPct = float64(subscribedQuota) * 100.0 / float64(volQuota.Thresholds.Hard)
+					hardQuotaRemainingPct = float64(hardQuotaRemaining) * 100.0 / float64(volQuota.Thresholds.Hard)
 				}
+
+				metric := &VolumeQuotaMetricsRecord{
+					volumeMeta:            volumeMeta,
+					quotaSubscribed:       subscribedQuota,
+					hardQuotaRemaining:    hardQuotaRemaining,
+					quotaSubscribedPct:    subscribedQuotaPct,
+					hardQuotaRemainingPct: hardQuotaRemainingPct,
+				}
+				s.Logger.Debugf("volume quota metrics %+v", *metric)
+
+				ch <- metric
 			}(volume)
 		}
 
@@ -247,23 +396,19 @@ func (s *PowerScaleService) gatherVolumeMetrics(ctx context.Context, volumes <-c
 	return ch
 }
 
-// pushVolumeMetrics will push the provided channel of volume metrics to a data collector
-func (s *PowerScaleService) pushVolumeMetrics(ctx context.Context, volumeMetrics <-chan *VolumeMetricsRecord) <-chan string {
+// pushVolumeQuotaMetrics will push the provided channel of volume metrics to a data collector
+func (s *PowerScaleService) pushVolumeQuotaMetrics(ctx context.Context, volumeMetrics <-chan *VolumeQuotaMetricsRecord) <-chan string {
 	start := time.Now()
-	defer s.timeSince(start, "pushVolumeMetrics")
+	defer s.timeSince(start, "pushVolumeQuotaMetrics")
 	var wg sync.WaitGroup
 
 	ch := make(chan string)
 	go func() {
 		for metrics := range volumeMetrics {
 			wg.Add(1)
-			go func(metrics *VolumeMetricsRecord) {
+			go func(metrics *VolumeQuotaMetricsRecord) {
 				defer wg.Done()
-				err := s.MetricsWrapper.RecordVolumeSpace(ctx,
-					metrics.volumeMeta,
-					metrics.quotaSubscribed,
-					metrics.hardQuotaRemaining,
-				)
+				err := s.MetricsWrapper.RecordVolumeQuota(ctx, metrics.volumeMeta, metrics)
 				if err != nil {
 					s.Logger.WithError(err).WithField("volume_id", metrics.volumeMeta.ID).Error("recording metrics for volume")
 				} else {
