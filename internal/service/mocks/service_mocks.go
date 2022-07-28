@@ -58,14 +58,14 @@ func (mr *MockServiceMockRecorder) ExportClusterPerformanceMetrics(arg0 interfac
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportClusterPerformanceMetrics", reflect.TypeOf((*MockService)(nil).ExportClusterPerformanceMetrics), arg0)
 }
 
-// ExportVolumeMetrics mocks base method.
-func (m *MockService) ExportVolumeMetrics(arg0 context.Context) {
+// ExportQuotaMetrics mocks base method.
+func (m *MockService) ExportQuotaMetrics(arg0 context.Context) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "ExportVolumeMetrics", arg0)
+	m.ctrl.Call(m, "ExportQuotaMetrics", arg0)
 }
 
-// ExportVolumeMetrics indicates an expected call of ExportVolumeMetrics.
-func (mr *MockServiceMockRecorder) ExportVolumeMetrics(arg0 interface{}) *gomock.Call {
+// ExportQuotaMetrics indicates an expected call of ExportQuotaMetrics.
+func (mr *MockServiceMockRecorder) ExportQuotaMetrics(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportVolumeMetrics", reflect.TypeOf((*MockService)(nil).ExportVolumeMetrics), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportQuotaMetrics", reflect.TypeOf((*MockService)(nil).ExportQuotaMetrics), arg0)
 }

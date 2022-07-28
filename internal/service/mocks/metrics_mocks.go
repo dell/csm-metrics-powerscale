@@ -65,18 +65,32 @@ func (mr *MockMetricsRecorderMockRecorder) RecordClusterPerformanceStatsMetrics(
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordClusterPerformanceStatsMetrics", reflect.TypeOf((*MockMetricsRecorder)(nil).RecordClusterPerformanceStatsMetrics), arg0, arg1)
 }
 
-// RecordVolumeSpace mocks base method.
-func (m *MockMetricsRecorder) RecordVolumeSpace(arg0 context.Context, arg1 interface{}, arg2, arg3 int64) error {
+// RecordClusterQuota mocks base method.
+func (m *MockMetricsRecorder) RecordClusterQuota(arg0 context.Context, arg1 interface{}, arg2 *service.ClusterQuotaRecord) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RecordVolumeSpace", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "RecordClusterQuota", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// RecordVolumeSpace indicates an expected call of RecordVolumeSpace.
-func (mr *MockMetricsRecorderMockRecorder) RecordVolumeSpace(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+// RecordClusterQuota indicates an expected call of RecordClusterQuota.
+func (mr *MockMetricsRecorderMockRecorder) RecordClusterQuota(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordVolumeSpace", reflect.TypeOf((*MockMetricsRecorder)(nil).RecordVolumeSpace), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordClusterQuota", reflect.TypeOf((*MockMetricsRecorder)(nil).RecordClusterQuota), arg0, arg1, arg2)
+}
+
+// RecordVolumeQuota mocks base method.
+func (m *MockMetricsRecorder) RecordVolumeQuota(arg0 context.Context, arg1 interface{}, arg2 *service.VolumeQuotaMetricsRecord) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordVolumeQuota", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RecordVolumeQuota indicates an expected call of RecordVolumeQuota.
+func (mr *MockMetricsRecorderMockRecorder) RecordVolumeQuota(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordVolumeQuota", reflect.TypeOf((*MockMetricsRecorder)(nil).RecordVolumeQuota), arg0, arg1, arg2)
 }
 
 // MockAsyncMetricCreator is a mock of AsyncMetricCreator interface.

@@ -22,7 +22,7 @@ import (
 	"go.opentelemetry.io/otel/metric/global"
 )
 
-func Test_Metrics_Record(t *testing.T) {
+func Test_Volume_Quota_Metrics_Record(t *testing.T) {
 	type checkFn func(*testing.T, error)
 	checkFns := func(checkFns ...checkFn) []checkFn { return checkFns }
 
@@ -54,13 +54,17 @@ func Test_Metrics_Record(t *testing.T) {
 				otMeter := global.Meter(prefix + "_test")
 				subscribed, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "subscribed_quota")
 				hardQuota, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "hard_quota_remaining_gigabytes")
+				subscribedPct, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "subscribed_quota_percentage")
+				hardQuotaPct, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "hard_quota_remaining_percentage")
 				if err != nil {
 					t.Fatal(err)
 				}
 
-				meter.EXPECT().AsyncFloat64().Return(provider).Times(2)
+				meter.EXPECT().AsyncFloat64().Return(provider).Times(4)
 				provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(subscribed, nil)
 				provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(hardQuota, nil)
+				provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(subscribedPct, nil)
+				provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(hardQuotaPct, nil)
 
 				return &service.MetricsWrapper{
 					Meter: meter,
@@ -77,7 +81,7 @@ func Test_Metrics_Record(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			getMeter := func(prefix string) *service.MetricsWrapper {
 				meter := mocks.NewMockAsyncMetricCreator(ctrl)
-				provider := mocks.NewMockInstrumentProvider(ctrl)
+				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
 				otMeter := global.Meter(prefix + "_test")
 				subscribed, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "quota_subscribed_gigabytes")
 				if err != nil {
@@ -131,7 +135,127 @@ func Test_Metrics_Record(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			mws, checks := tc(t)
 			for i := range mws {
-				err := mws[i].RecordVolumeSpace(context.Background(), metas[i], 10000, 2000)
+				err := mws[i].RecordVolumeQuota(context.Background(), metas[i], &service.VolumeQuotaMetricsRecord{})
+				for _, check := range checks {
+					check(t, err)
+				}
+			}
+		})
+	}
+}
+
+func Test_Cluster_Quota_Metrics_Record(t *testing.T) {
+	type checkFn func(*testing.T, error)
+	checkFns := func(checkFns ...checkFn) []checkFn { return checkFns }
+
+	verifyError := func(t *testing.T, err error) {
+		if err == nil {
+			t.Errorf("expected an error, got nil")
+		}
+	}
+
+	verifyNoError := func(t *testing.T, err error) {
+		if err != nil {
+			t.Errorf("expected nil error, got %v", err)
+		}
+	}
+
+	metas := []interface{}{
+		&service.ClusterMeta{
+			ClusterName: "cluster-1",
+		},
+	}
+
+	tests := map[string]func(t *testing.T) ([]*service.MetricsWrapper, []checkFn){
+		"success": func(t *testing.T) ([]*service.MetricsWrapper, []checkFn) {
+			ctrl := gomock.NewController(t)
+
+			getMeter := func(prefix string) *service.MetricsWrapper {
+				meter := mocks.NewMockAsyncMetricCreator(ctrl)
+				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
+				otMeter := global.Meter(prefix + "_test")
+
+				clusterSubscribed, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_directory_total_hard_quota_gigabytes")
+				clusterSubscribedPct, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_directory_total_hard_quota_percentage")
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				meter.EXPECT().AsyncFloat64().Return(provider).Times(2)
+				provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(clusterSubscribed, nil)
+				provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(clusterSubscribedPct, nil)
+
+				return &service.MetricsWrapper{
+					Meter: meter,
+				}
+			}
+
+			mws := []*service.MetricsWrapper{
+				getMeter("powerscale_directory"),
+			}
+
+			return mws, checkFns(verifyNoError)
+		},
+		"error creating cluster_subscribed_quota": func(t *testing.T) ([]*service.MetricsWrapper, []checkFn) {
+			ctrl := gomock.NewController(t)
+			getMeter := func(prefix string) *service.MetricsWrapper {
+				meter := mocks.NewMockAsyncMetricCreator(ctrl)
+				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
+				otMeter := global.Meter(prefix + "_test")
+				clusterSubscribed, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_directory_total_hard_quota_gigabytes")
+
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				meter.EXPECT().AsyncFloat64().Return(provider).Times(1)
+				provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(clusterSubscribed, errors.New("error"))
+
+				return &service.MetricsWrapper{
+					Meter: meter,
+				}
+			}
+
+			mws := []*service.MetricsWrapper{
+				getMeter("powerscale_directory_"),
+			}
+
+			return mws, checkFns(verifyError)
+		},
+		"error creating hard_quota_remaining": func(t *testing.T) ([]*service.MetricsWrapper, []checkFn) {
+			ctrl := gomock.NewController(t)
+			getMeter := func(prefix string) *service.MetricsWrapper {
+				meter := mocks.NewMockAsyncMetricCreator(ctrl)
+				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
+				otMeter := global.Meter(prefix + "_test")
+				clusterSubscribed, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_directory_total_hard_quota_gigabytes")
+				clusterSubscribedPct, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_directory_total_hard_quota_percentage")
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				meter.EXPECT().AsyncFloat64().Return(provider).Times(2)
+				provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(clusterSubscribed, nil)
+				provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(clusterSubscribedPct, errors.New("error"))
+
+				return &service.MetricsWrapper{
+					Meter: meter,
+				}
+			}
+
+			mws := []*service.MetricsWrapper{
+				getMeter("powerscale_directory_"),
+			}
+
+			return mws, checkFns(verifyError)
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			mws, checks := tc(t)
+			for i := range mws {
+				err := mws[i].RecordClusterQuota(context.Background(), metas[i], &service.ClusterQuotaRecord{})
 				for _, check := range checks {
 					check(t, err)
 				}
@@ -148,7 +272,7 @@ func Test_Volume_Metrics_Label_Update(t *testing.T) {
 		IsiPath:                   "/ifs/data/csi",
 		StorageClass:              "isilon",
 		PersistentVolumeClaimName: "pvc-name",
-		NameSpace:                 "pvc-namespace",
+		Namespace:                 "pvc-namespace",
 	}
 
 	metaSecond := &service.VolumeMeta{
@@ -158,7 +282,7 @@ func Test_Volume_Metrics_Label_Update(t *testing.T) {
 		IsiPath:                   "/ifs/data/csi",
 		StorageClass:              "isilon",
 		PersistentVolumeClaimName: "pvc-name",
-		NameSpace:                 "pvc-namespace",
+		Namespace:                 "pvc-namespace",
 	}
 
 	metaThird := &service.VolumeMeta{
@@ -168,7 +292,7 @@ func Test_Volume_Metrics_Label_Update(t *testing.T) {
 		IsiPath:                   "/ifs/data/csi",
 		StorageClass:              "isilon",
 		PersistentVolumeClaimName: "pvc-name",
-		NameSpace:                 "pvc-namespace",
+		Namespace:                 "pvc-namespace",
 	}
 
 	expectedLabels := []attribute.KeyValue{
@@ -179,38 +303,42 @@ func Test_Volume_Metrics_Label_Update(t *testing.T) {
 		attribute.String("StorageClass", metaSecond.StorageClass),
 		attribute.String("PlotWithMean", "No"),
 		attribute.String("PersistentVolumeClaim", metaSecond.PersistentVolumeClaimName),
-		attribute.String("PersistentVolumeNameSpace", metaSecond.NameSpace),
+		attribute.String("PersistentVolumeNameSpace", metaSecond.Namespace),
 	}
 
 	ctrl := gomock.NewController(t)
 
 	meter := mocks.NewMockAsyncMetricCreator(ctrl)
 	provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-	otMeter := global.Meter("powerscale_volume_test")
+	otMeter := global.Meter("powerscale_volume_quota_test")
 	subscribed, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_volume_quota_subscribed_gigabytes")
 	hardQuota, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_volume_hard_quota_remaining_gigabytes")
+	subscribedPct, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_volume_quota_subscribed_quota_percentage")
+	hardQuotaPct, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_volume_hard_quota_remaining_percentage")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	meter.EXPECT().AsyncFloat64().Return(provider).Times(4)
+	meter.EXPECT().AsyncFloat64().Return(provider).Times(8)
 	provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(subscribed, nil).Times(2)
 	provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(hardQuota, nil).Times(2)
+	provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(subscribedPct, nil).Times(2)
+	provider.EXPECT().UpDownCounter(gomock.Any(), gomock.Any()).Return(hardQuotaPct, nil).Times(2)
 
 	mw := &service.MetricsWrapper{
 		Meter: meter,
 	}
 
-	t.Run("success: volume metric labels updated", func(t *testing.T) {
-		err := mw.RecordVolumeSpace(context.Background(), metaFirst, 1000, 2000)
+	t.Run("success: metric labels updated", func(t *testing.T) {
+		err := mw.RecordVolumeQuota(context.Background(), metaFirst, &service.VolumeQuotaMetricsRecord{})
 		if err != nil {
 			t.Errorf("expected nil error (record #1), got %v", err)
 		}
-		err = mw.RecordVolumeSpace(context.Background(), metaSecond, 1000, 2000)
+		err = mw.RecordVolumeQuota(context.Background(), metaSecond, &service.VolumeQuotaMetricsRecord{})
 		if err != nil {
 			t.Errorf("expected nil error (record #2), got %v", err)
 		}
-		err = mw.RecordVolumeSpace(context.Background(), metaThird, 1000, 2000)
+		err = mw.RecordVolumeQuota(context.Background(), metaThird, &service.VolumeQuotaMetricsRecord{})
 		if err != nil {
 			t.Errorf("expected nil error (record #3), got %v", err)
 		}

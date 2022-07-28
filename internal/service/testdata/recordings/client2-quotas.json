@@ -1,0 +1,34 @@
+[
+  {
+    "container": true,
+    "enforced": true,
+    "id": "pwHJAAEAAAAAAAAAAAAAQE0BAAAAAAAA",
+    "include_snapshots": false,
+    "linked": false,
+    "notifications": "default",
+    "path": "/ifs/data/csi/mock-pv3",
+    "persona": null,
+    "ready": true,
+    "thresholds": {
+      "advisory": null,
+      "advisory_exceeded": false,
+      "advisory_last_exceeded": null,
+      "hard": 3221225472,
+      "hard_exceeded": false,
+      "hard_last_exceeded": null,
+      "percent_advisory": null,
+      "percent_soft": null,
+      "soft": null,
+      "soft_exceeded": false,
+      "soft_grace": null,
+      "soft_last_exceeded": null
+    },
+    "thresholds_include_overhead": false,
+    "type": "directory",
+    "usage": {
+      "inodes": 1,
+      "logical": 0,
+      "physical": 2048
+    }
+  }
+]

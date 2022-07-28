@@ -45,7 +45,7 @@ func Test_Run(t *testing.T) {
 			e.EXPECT().StopExporter().Return(nil)
 
 			svc := mocks.NewMockService(ctrl)
-			svc.EXPECT().ExportVolumeMetrics(gomock.Any()).AnyTimes()
+			svc.EXPECT().ExportQuotaMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterCapacityMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterPerformanceMetrics(gomock.Any()).AnyTimes()
 
@@ -131,7 +131,7 @@ func Test_Run(t *testing.T) {
 			e.EXPECT().StopExporter().Return(nil)
 
 			svc := mocks.NewMockService(ctrl)
-			svc.EXPECT().ExportVolumeMetrics(gomock.Any()).AnyTimes()
+			svc.EXPECT().ExportQuotaMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterCapacityMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterPerformanceMetrics(gomock.Any()).AnyTimes()
 
@@ -160,7 +160,7 @@ func Test_Run(t *testing.T) {
 			e.EXPECT().StopExporter().Return(nil)
 
 			svc := mocks.NewMockService(ctrl)
-			svc.EXPECT().ExportVolumeMetrics(gomock.Any()).AnyTimes()
+			svc.EXPECT().ExportQuotaMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterCapacityMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterPerformanceMetrics(gomock.Any()).AnyTimes()
 			return false, config, e, svc, prevConfigValidationFunc, ctrl, true
@@ -236,7 +236,7 @@ func Test_Run(t *testing.T) {
 			e.EXPECT().StopExporter().Return(nil)
 
 			svc := mocks.NewMockService(ctrl)
-			svc.EXPECT().ExportVolumeMetrics(gomock.Any()).AnyTimes()
+			svc.EXPECT().ExportQuotaMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterCapacityMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterPerformanceMetrics(gomock.Any()).AnyTimes()
 
