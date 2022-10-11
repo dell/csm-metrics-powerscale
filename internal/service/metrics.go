@@ -19,6 +19,7 @@ import (
 )
 
 // MetricsRecorder supports recording volume and cluster metric
+//
 //go:generate mockgen -destination=mocks/metrics_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service MetricsRecorder,AsyncMetricCreator
 type MetricsRecorder interface {
 	RecordVolumeQuota(ctx context.Context, meta interface{}, metric *VolumeQuotaMetricsRecord) error
@@ -27,9 +28,10 @@ type MetricsRecorder interface {
 	RecordClusterPerformanceStatsMetrics(ctx context.Context, metric *ClusterPerformanceStatsMetricsRecord) error
 }
 
+// AsyncMetricCreator to create AsyncInt64/AsyncFloat64 InstrumentProvider
+//
 //go:generate mockgen -destination=mocks/asyncint64mock/instrument_asyncint64_provider_mocks.go -package=asyncint64mock go.opentelemetry.io/otel/metric/instrument/asyncint64 InstrumentProvider
 //go:generate mockgen -destination=mocks/asyncfloat64mock/instrument_asyncfloat64_provider_mocks.go -package=asyncfloat64mock go.opentelemetry.io/otel/metric/instrument/asyncfloat64 InstrumentProvider
-// AsyncMetricCreator to create AsyncInt64/AsyncFloat64 InstrumentProvider
 type AsyncMetricCreator interface {
 	AsyncInt64() asyncint64.InstrumentProvider
 	AsyncFloat64() asyncfloat64.InstrumentProvider

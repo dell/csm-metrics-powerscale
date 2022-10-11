@@ -33,6 +33,7 @@ const (
 )
 
 // Service contains operations that would be used to interact with a PowerScale system
+//
 //go:generate mockgen -destination=mocks/service_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service Service
 type Service interface {
 	ExportQuotaMetrics(context.Context)
@@ -41,6 +42,7 @@ type Service interface {
 }
 
 // PowerScaleClient contains operations for accessing the PowerScale API
+//
 //go:generate mockgen -destination=mocks/powerscale_client_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service PowerScaleClient
 type PowerScaleClient interface {
 	GetFloatStatistics(ctx context.Context, keys []string) (goisilon.FloatStats, error)
@@ -60,18 +62,21 @@ type PowerScaleService struct {
 }
 
 // VolumeFinder is used to find volume information in kubernetes
+//
 //go:generate mockgen -destination=mocks/volume_finder_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service VolumeFinder
 type VolumeFinder interface {
 	GetPersistentVolumes(context.Context) ([]k8s.VolumeInfo, error)
 }
 
 // StorageClassFinder is used to find storage classes in kubernetes
+//
 //go:generate mockgen -destination=mocks/storage_class_finder_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service StorageClassFinder
 type StorageClassFinder interface {
 	GetStorageClasses(context.Context) ([]v1.StorageClass, error)
 }
 
 // LeaderElector will elect a leader
+//
 //go:generate mockgen -destination=mocks/leader_elector_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service LeaderElector
 type LeaderElector interface {
 	InitLeaderElection(string, string) error
