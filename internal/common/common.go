@@ -144,6 +144,7 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 			cluster.Password,
 			cluster.IsiPath,
 			cluster.IsiVolumePathPermissions,
+			false,
 			cluster.IsiAuthType)
 
 		if err != nil {
