@@ -127,11 +127,16 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 		cluster.EndpointURL = fmt.Sprintf("https://%s:%s", cluster.Endpoint, cluster.EndpointPort)
 
 		logger.WithFields(logrus.Fields{
-			"endpoint": cluster.EndpointURL,
-			"insecure": cluster.Insecure,
-			"username": cluster.Username,
-			"authtype": cluster.IsiAuthType,
-			"verbose":  cluster.Verbose,
+			"endpoint":                cluster.EndpointURL,
+			"insecure":                cluster.Insecure,
+			"verbose":                 cluster.Verbose,
+			"username":                cluster.Username,
+			"group":                   "",
+			"password":                cluster.Password,
+			"volumesPath":             cluster.IsiPath,
+			"volumesPathPermissions ": cluster.IsiVolumePathPermissions,
+			"ignoreUnresolvableHosts": "false",
+			"authtype":                cluster.IsiAuthType,
 		}).Infof("setting client options")
 
 		c, err := goisilon.NewClientWithArgs(
