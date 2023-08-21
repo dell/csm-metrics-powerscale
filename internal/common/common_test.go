@@ -17,10 +17,10 @@
 package common_test
 
 import (
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -69,11 +69,11 @@ func Test_Run(t *testing.T) {
 			logger := logrus.New()
 			filePath, expectError := test(t)
 
-			fileContentBytes, _ := ioutil.ReadFile(filePath)
+			fileContentBytes, _ := os.ReadFile(filePath)
 
 			newContent := strings.Replace(string(fileContentBytes), "[serverip]", serverIP, 1)
 			newContent = strings.Replace(newContent, "[serverport]", serverPort, 1)
-			ioutil.WriteFile(filePath, []byte(newContent), 0644)
+			os.WriteFile(filePath, []byte(newContent), 0644)
 
 			clusters, defaultCluster, err := common.GetPowerScaleClusters(filePath, logger)
 
@@ -86,7 +86,7 @@ func Test_Run(t *testing.T) {
 				assert.NotNil(t, defaultCluster)
 				assert.Nil(t, err)
 			}
-			ioutil.WriteFile(filePath, fileContentBytes, 0644)
+			os.WriteFile(filePath, fileContentBytes, 0644)
 		})
 	}
 }

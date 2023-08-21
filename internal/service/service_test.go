@@ -19,12 +19,13 @@ package service_test
 import (
 	"context"
 	"errors"
+	"os"
+	"testing"
+
 	"github.com/dell/goisilon"
 	"github.com/dell/goisilon/api/json"
-	"io/ioutil"
 	v1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"testing"
 
 	"github.com/dell/csm-metrics-powerscale/internal/service"
 	"github.com/dell/csm-metrics-powerscale/internal/service/mocks"
@@ -75,12 +76,12 @@ var mockVolumes = []k8s.VolumeInfo{
 
 func Test_ExportVolumeMetrics(t *testing.T) {
 	quotaFile1 := "testdata/recordings/client1-quotas.json"
-	contentBytes1, _ := ioutil.ReadFile(quotaFile1)
+	contentBytes1, _ := os.ReadFile(quotaFile1)
 	var client1MockQuotaList goisilon.QuotaList
 	json.Unmarshal(contentBytes1, &client1MockQuotaList)
 
 	quotaFile2 := "testdata/recordings/client2-quotas.json"
-	contentBytes2, _ := ioutil.ReadFile(quotaFile2)
+	contentBytes2, _ := os.ReadFile(quotaFile2)
 	var client2MockQuotaList goisilon.QuotaList
 	json.Unmarshal(contentBytes2, &client2MockQuotaList)
 
@@ -441,7 +442,7 @@ func Test_ExportClusterMetrics(t *testing.T) {
 			metrics.EXPECT().RecordClusterPerformanceStatsMetrics(gomock.Any(), gomock.Any()).Times(1)
 
 			file := "testdata/recordings/platform-3-statistics-current.json"
-			contentBytes, _ := ioutil.ReadFile(file)
+			contentBytes, _ := os.ReadFile(file)
 			var stats goisilon.FloatStats
 			json.Unmarshal(contentBytes, &stats)
 
