@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -51,7 +51,7 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 		Clusters []*service.PowerScaleCluster `yaml:"isilonClusters"`
 	}
 
-	data, err := ioutil.ReadFile(filepath.Clean(filePath))
+	data, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
 		logger.WithError(err).Errorf("cannot read file %s", filePath)
 		return nil, nil, err
