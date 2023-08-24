@@ -19,10 +19,11 @@ package entrypoint_test
 import (
 	"context"
 	"fmt"
-	"github.com/dell/csm-metrics-powerscale/internal/service/mocks"
-	exportermocks "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters/mocks"
 	"testing"
 	"time"
+
+	"github.com/dell/csm-metrics-powerscale/internal/service/mocks"
+	exportermocks "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters/mocks"
 
 	"github.com/sirupsen/logrus"
 
@@ -33,7 +34,6 @@ import (
 )
 
 func Test_Run(t *testing.T) {
-
 	tests := map[string]func(t *testing.T) (expectError bool, config *entrypoint.Config, exporter otlexporters.Otlexporter, pScaleSvc pScaleService.Service, prevConfigValidationFunc func(*entrypoint.Config) error, ctrl *gomock.Controller, validatingConfig bool){
 		"success": func(*testing.T) (bool, *entrypoint.Config, otlexporters.Otlexporter, pScaleService.Service, func(*entrypoint.Config) error, *gomock.Controller, bool) {
 			ctrl := gomock.NewController(t)

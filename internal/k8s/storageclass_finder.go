@@ -45,7 +45,7 @@ type StorageClassFinder struct {
 }
 
 // GetStorageClasses will return a list of storage classes that match the given DriverName in Kubernetes
-func (f *StorageClassFinder) GetStorageClasses(ctx context.Context) ([]v1.StorageClass, error) {
+func (f *StorageClassFinder) GetStorageClasses(_ context.Context) ([]v1.StorageClass, error) {
 	var storageClasses []v1.StorageClass
 
 	classes, err := f.API.GetStorageClasses()
@@ -64,7 +64,6 @@ func (f *StorageClassFinder) GetStorageClasses(ctx context.Context) ([]v1.Storag
 }
 
 func (f *StorageClassFinder) isMatch(class v1.StorageClass) bool {
-
 	for _, cluster := range f.ClusterNames {
 		if !Contains(cluster.DriverNames, class.Provisioner) {
 			continue

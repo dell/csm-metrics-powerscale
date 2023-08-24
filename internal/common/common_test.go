@@ -32,7 +32,6 @@ import (
 )
 
 func Test_Run(t *testing.T) {
-
 	tests := map[string]func(t *testing.T) (filePath string, expectError bool){
 		"success": func(*testing.T) (string, bool) {
 			viper.SetDefault("POWERSCALE_ISICLIENT_VERBOSE", 0)
@@ -73,7 +72,7 @@ func Test_Run(t *testing.T) {
 
 			newContent := strings.Replace(string(fileContentBytes), "[serverip]", serverIP, 1)
 			newContent = strings.Replace(newContent, "[serverport]", serverPort, 1)
-			os.WriteFile(filePath, []byte(newContent), 0644)
+			os.WriteFile(filePath, []byte(newContent), 0o600)
 
 			clusters, defaultCluster, err := common.GetPowerScaleClusters(filePath, logger)
 
@@ -86,7 +85,7 @@ func Test_Run(t *testing.T) {
 				assert.NotNil(t, defaultCluster)
 				assert.Nil(t, err)
 			}
-			os.WriteFile(filePath, fileContentBytes, 0644)
+			os.WriteFile(filePath, fileContentBytes, 0o600)
 		})
 	}
 }

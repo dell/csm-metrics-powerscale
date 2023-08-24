@@ -19,8 +19,9 @@ package service_test
 import (
 	"context"
 	"errors"
-	"github.com/dell/csm-metrics-powerscale/internal/service/mocks/asyncfloat64mock"
 	"testing"
+
+	"github.com/dell/csm-metrics-powerscale/internal/service/mocks/asyncfloat64mock"
 
 	"github.com/dell/csm-metrics-powerscale/internal/service"
 	"github.com/dell/csm-metrics-powerscale/internal/service/mocks"
@@ -211,7 +212,6 @@ func Test_Cluster_Quota_Metrics_Record(t *testing.T) {
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
 				otMeter := global.Meter(prefix + "_test")
 				clusterSubscribed, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_directory_total_hard_quota_gigabytes")
-
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -395,7 +395,6 @@ func Test_Cluster_Capacity_Stats_Metrics_Record(t *testing.T) {
 				total, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "total_capacity_terabytes")
 				avail, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "remaining_capacity_terabytes")
 				usedPercent, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "used_capacity_percentage")
-
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -423,7 +422,6 @@ func Test_Cluster_Capacity_Stats_Metrics_Record(t *testing.T) {
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
 				otMeter := global.Meter(prefix + "_test")
 				total, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "total_capacity_terabytes")
-
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -493,7 +491,6 @@ func Test_Cluster_Perf_Stats_Metrics_Record(t *testing.T) {
 				diskWriteOperationsRate, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "disk_write_operation_rate")
 				diskReadThroughputRate, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "disk_throughput_read_rate_megabytes_per_second")
 				diskWriteThroughputRate, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "disk_throughput_write_rate_megabytes_per_second")
-
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -523,7 +520,6 @@ func Test_Cluster_Perf_Stats_Metrics_Record(t *testing.T) {
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
 				otMeter := global.Meter(prefix + "_test")
 				total, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "disk_read_operation_rate")
-
 				if err != nil {
 					t.Fatal(err)
 				}

@@ -163,14 +163,14 @@ func (s *PowerScaleService) ExportQuotaMetrics(ctx context.Context) {
 	go func() {
 		for range s.pushVolumeQuotaMetrics(ctx, s.gatherVolumeQuotaMetrics(ctx, cluster2Quotas, s.volumeServer(ctx, pvs))) {
 			// consume the channel until it is empty and closed
-		}
+		} // revive:disable-line:empty-block
 		wg.Done()
 	}()
 
 	go func() {
 		for range s.pushClusterQuotaMetrics(ctx, s.gatherClusterQuotaMetrics(ctx, cluster2Quotas)) {
 			// consume the channel until it is empty and closed
-		}
+		} // revive:disable-line:empty-block
 		wg.Done()
 	}()
 
@@ -205,7 +205,7 @@ func (s *PowerScaleService) pushClusterQuotaMetrics(ctx context.Context, cluster
 }
 
 // gatherClusterQuotaMetrics will return a channel of volume metrics based on the input of volumes
-func (s *PowerScaleService) gatherClusterQuotaMetrics(ctx context.Context, cluster2Quotas map[string]goisilon.QuotaList) <-chan *ClusterQuotaRecord {
+func (s *PowerScaleService) gatherClusterQuotaMetrics(_ context.Context, cluster2Quotas map[string]goisilon.QuotaList) <-chan *ClusterQuotaRecord {
 	start := time.Now()
 	defer s.timeSince(start, "gatherClusterQuotaMetrics")
 
@@ -288,7 +288,7 @@ func getHighestQuotas(list goisilon.QuotaList) goisilon.QuotaList {
 }
 
 // volumeServer will return a channel of volumes that can provide statistics about each volume
-func (s *PowerScaleService) volumeServer(ctx context.Context, volumes []k8s.VolumeInfo) <-chan k8s.VolumeInfo {
+func (s *PowerScaleService) volumeServer(_ context.Context, volumes []k8s.VolumeInfo) <-chan k8s.VolumeInfo {
 	volumeChannel := make(chan k8s.VolumeInfo, len(volumes))
 	go func() {
 		for _, volume := range volumes {
@@ -301,7 +301,8 @@ func (s *PowerScaleService) volumeServer(ctx context.Context, volumes []k8s.Volu
 
 // gatherVolumeQuotaMetrics will return a channel of volume metrics based on the input of volumes
 func (s *PowerScaleService) gatherVolumeQuotaMetrics(ctx context.Context, cluster2Quotas map[string]goisilon.QuotaList,
-	volumes <-chan k8s.VolumeInfo) <-chan *VolumeQuotaMetricsRecord {
+	volumes <-chan k8s.VolumeInfo,
+) <-chan *VolumeQuotaMetricsRecord {
 	start := time.Now()
 	defer s.timeSince(start, "gatherVolumeQuotaMetrics")
 
@@ -436,15 +437,14 @@ func (s *PowerScaleService) pushVolumeQuotaMetrics(ctx context.Context, volumeMe
 	return ch
 }
 
-func (s *PowerScaleService) getPowerScaleClient(ctx context.Context, clusterName string) (PowerScaleClient, error) {
-
+func (s *PowerScaleService) getPowerScaleClient(_ context.Context, clusterName string) (PowerScaleClient, error) {
 	if goPowerScaleClient, ok := s.PowerScaleClients[clusterName]; ok {
 		return goPowerScaleClient, nil
 	}
 	return nil, fmt.Errorf("unable to find client")
 }
 
-func (s *PowerScaleService) getClientIsiPath(ctx context.Context, clusterName string) (string, error) {
+func (s *PowerScaleService) getClientIsiPath(_ context.Context, clusterName string) (string, error) {
 	if path, ok := s.ClientIsiPaths[clusterName]; ok {
 		return path, nil
 	}
@@ -477,7 +477,7 @@ func (s *PowerScaleService) ExportClusterCapacityMetrics(ctx context.Context) {
 
 	for range s.pushClusterCapacityStatsMetrics(ctx, s.gatherClusterCapacityStatsMetrics(ctx)) {
 		// consume the channel until it is empty and closed
-	}
+	} // revive:disable-line:empty-block
 }
 
 // gatherClusterStatsMetrics will return a channel of array statistics metric
@@ -490,7 +490,7 @@ func (s *PowerScaleService) gatherClusterCapacityStatsMetrics(ctx context.Contex
 	sem := make(chan struct{}, s.MaxPowerScaleConnections)
 
 	type StatsKeyFunc func(metric *ClusterCapacityStatsMetricsRecord, value float64)
-	var statsKeyFuncMap = map[string]StatsKeyFunc{
+	statsKeyFuncMap := map[string]StatsKeyFunc{
 		"ifs.bytes.total": func(metric *ClusterCapacityStatsMetricsRecord, value float64) {
 			metric.TotalCapacity = value
 		},
@@ -515,7 +515,6 @@ func (s *PowerScaleService) gatherClusterCapacityStatsMetrics(ctx context.Contex
 					<-sem
 				}()
 				stats, err := goPowerScaleClient.GetFloatStatistics(ctx, statsKeys)
-
 				if err != nil {
 					s.Logger.WithError(err).WithField("cluster_name", clusterName).Error("getting capacity stats for cluster")
 					return
@@ -552,7 +551,6 @@ func (s *PowerScaleService) pushClusterCapacityStatsMetrics(ctx context.Context,
 
 	ch := make(chan *ClusterCapacityStatsMetricsRecord)
 	go func() {
-
 		for m := range clusterStatistics {
 			wg.Add(1)
 			go func(metric *ClusterCapacityStatsMetricsRecord) {
@@ -589,7 +587,7 @@ func (s *PowerScaleService) ExportClusterPerformanceMetrics(ctx context.Context)
 
 	for range s.pushClusterPerformanceStatsMetrics(ctx, s.gatherClusterPerformanceStatsMetrics(ctx)) {
 		// consume the channel until it is empty and closed
-	}
+	} // revive:disable-line:empty-block
 }
 
 // gatherClusterPerformanceStatsMetrics will return a channel of array statistics metric
@@ -602,7 +600,7 @@ func (s *PowerScaleService) gatherClusterPerformanceStatsMetrics(ctx context.Con
 	sem := make(chan struct{}, s.MaxPowerScaleConnections)
 
 	type StatsKeyFunc func(metric *ClusterPerformanceStatsMetricsRecord, value float64)
-	var statsKeyFuncMap = map[string]StatsKeyFunc{
+	statsKeyFuncMap := map[string]StatsKeyFunc{
 		// Cluster average of system CPU usage in tenths of a percent
 		"cluster.cpu.sys.avg": func(metric *ClusterPerformanceStatsMetricsRecord, value float64) {
 			metric.CPUPercentage = value
@@ -637,7 +635,6 @@ func (s *PowerScaleService) gatherClusterPerformanceStatsMetrics(ctx context.Con
 					<-sem
 				}()
 				stats, err := goPowerScaleClient.GetFloatStatistics(ctx, statsKeys)
-
 				if err != nil {
 					s.Logger.WithError(err).WithField("cluster_name", clusterName).Error("getting performance stats for cluster")
 					return
@@ -674,7 +671,6 @@ func (s *PowerScaleService) pushClusterPerformanceStatsMetrics(ctx context.Conte
 
 	ch := make(chan *ClusterPerformanceStatsMetricsRecord)
 	go func() {
-
 		for m := range clusterStatistics {
 			wg.Add(1)
 			go func(metric *ClusterPerformanceStatsMetricsRecord) {

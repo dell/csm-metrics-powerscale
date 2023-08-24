@@ -19,11 +19,12 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
+
 	"github.com/dell/csm-metrics-powerscale/internal/utils"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric/instrument/asyncfloat64"
 	"go.opentelemetry.io/otel/metric/instrument/asyncint64"
-	"sync"
 )
 
 // MetricsRecorder supports recording volume and cluster metric
@@ -86,8 +87,10 @@ type ClusterPerformanceStatsMetrics struct {
 	DiskWriteThroughputRate asyncfloat64.UpDownCounter
 }
 
-type loadMetricsFunc func(metaID string) (value any, ok bool)
-type initMetricsFunc func(prefix, metaID string, labels []attribute.KeyValue) (any, error)
+type (
+	loadMetricsFunc func(metaID string) (value any, ok bool)
+	initMetricsFunc func(prefix, metaID string, labels []attribute.KeyValue) (any, error)
+)
 
 // haveLabelsChanged checks if labels have been changed
 func haveLabelsChanged(currentLabels []attribute.KeyValue, labels []attribute.KeyValue) (bool, []attribute.KeyValue) {
@@ -183,7 +186,6 @@ func (mw *MetricsWrapper) RecordClusterQuota(ctx context.Context, meta interface
 	}
 
 	metricsMapValue, err := updateLabels(prefix, metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
-
 	if err != nil {
 		return err
 	}
@@ -257,7 +259,6 @@ func (mw *MetricsWrapper) RecordVolumeQuota(ctx context.Context, meta interface{
 	}
 
 	metricsMapValue, err := updateLabels(prefix, metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
-
 	if err != nil {
 		return err
 	}
@@ -292,7 +293,6 @@ func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(ctx context.Context,
 	}
 
 	metricsMapValue, err := updateLabels(prefix, metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
-
 	if err != nil {
 		return err
 	}
@@ -329,7 +329,6 @@ func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(ctx context.Conte
 	}
 
 	metricsMapValue, err := updateLabels(prefix, metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
-
 	if err != nil {
 		return err
 	}
