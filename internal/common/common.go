@@ -146,7 +146,6 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 			cluster.IsiVolumePathPermissions,
 			false,
 			cluster.IsiAuthType)
-
 		if err != nil {
 			return nil, nil, status.Errorf(codes.FailedPrecondition, "unable to create PowerScale client: %s", err.Error())
 		}

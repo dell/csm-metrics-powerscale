@@ -40,5 +40,4 @@ func Test_UnitsConvert(t *testing.T) {
 	if got != 9029296.123/1024 {
 		t.Errorf("Float64UnitsConvert() = %f, expect %f", got, 9029296.123/1024)
 	}
-
 }

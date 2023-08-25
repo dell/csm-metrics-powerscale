@@ -42,10 +42,8 @@ const (
 	DefaultNameSpace = "karavi"
 )
 
-var (
-	// ConfigValidatorFunc is used to override config validation in testing
-	ConfigValidatorFunc func(*Config) error = ValidateConfig
-)
+// ConfigValidatorFunc is used to override config validation in testing
+var ConfigValidatorFunc = ValidateConfig
 
 // Config holds data that will be used by the service
 type Config struct {

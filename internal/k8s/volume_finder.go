@@ -56,7 +56,7 @@ type VolumeInfo struct {
 }
 
 // GetPersistentVolumes will return a list of persistent volume information
-func (f VolumeFinder) GetPersistentVolumes(ctx context.Context) ([]VolumeInfo, error) {
+func (f VolumeFinder) GetPersistentVolumes(_ context.Context) ([]VolumeInfo, error) {
 	volumeInfo := make([]VolumeInfo, 0)
 
 	volumes, err := f.API.GetPersistentVolumes()
@@ -75,7 +75,7 @@ func (f VolumeFinder) GetPersistentVolumes(ctx context.Context) ([]VolumeInfo, e
 			status := volume.Status
 
 			var isiPath string
-			//fullPath sample: /ifs/data/csi/k8s-286356f237
+			// fullPath sample: /ifs/data/csi/k8s-286356f237
 			if fullPath, ok := volume.Spec.CSI.VolumeAttributes["Path"]; ok {
 				isiPath = strings.TrimSuffix(fullPath, fmt.Sprintf("/%s", volume.Name))
 			}

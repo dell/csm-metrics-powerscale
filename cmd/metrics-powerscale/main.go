@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -31,8 +32,6 @@ import (
 	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
 
 	"github.com/sirupsen/logrus"
-
-	"os"
 
 	"go.opentelemetry.io/otel/metric/global"
 
@@ -47,7 +46,6 @@ const (
 )
 
 func main() {
-
 	logger := logrus.New()
 
 	viper.SetConfigFile(defaultConfigFile)
@@ -159,7 +157,7 @@ func updatePowerScaleConnection(powerScaleSvc *service.PowerScaleService, storag
 		logger.WithField("cluster_name", clusterName).Debug("setting powerscale client from configuration")
 		clientIsiPaths[clusterName] = cluster.IsiPath
 
-		var clusterName = k8s.ClusterName{
+		clusterName := k8s.ClusterName{
 			ID:        clusterName,
 			IsDefault: cluster.IsDefault,
 		}
@@ -172,7 +170,6 @@ func updatePowerScaleConnection(powerScaleSvc *service.PowerScaleService, storag
 	powerScaleSvc.DefaultPowerScaleCluster = defaultCluster
 
 	updateProvisionerNames(volumeFinder, storageClassFinder, logger)
-
 }
 
 func updateCollectorAddress(config *entrypoint.Config, exporter *otlexporters.OtlCollectorExporter, logger *logrus.Logger) {
