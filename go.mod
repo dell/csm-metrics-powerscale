@@ -4,7 +4,7 @@ go 1.21
 
 require (
 	github.com/dell/goisilon v1.13.0
-	github.com/fsnotify/fsnotify v1.5.1
+	github.com/fsnotify/fsnotify v1.6.0
 	github.com/golang/mock v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/sirupsen/logrus v1.9.3
