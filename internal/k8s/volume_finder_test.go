@@ -364,6 +364,106 @@ func Test_K8sPersistentVolumeFinder(t *testing.T) {
 				},
 			})), ctrl
 		},
+		"success filtering the persistent volumes which do not have claims": func(*testing.T) (k8s.VolumeFinder, []checkFn, *gomock.Controller) {
+			ctrl := gomock.NewController(t)
+			api := mocks.NewMockVolumeGetter(ctrl)
+
+			t1, err := time.Parse(time.RFC3339, "2022-06-06T20:00:00+00:00")
+			assert.Nil(t, err)
+
+			volumes := &corev1.PersistentVolumeList{
+				Items: []corev1.PersistentVolume{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:              "k8s-7242537ae1",
+							CreationTimestamp: metav1.Time{Time: t1},
+						},
+						Spec: corev1.PersistentVolumeSpec{
+							Capacity: map[corev1.ResourceName]resource.Quantity{
+								corev1.ResourceStorage: resource.MustParse("16Gi"),
+							},
+							PersistentVolumeSource: corev1.PersistentVolumeSource{
+								CSI: &corev1.CSIPersistentVolumeSource{
+									Driver: "csi-isilon.dellemc.com",
+									VolumeAttributes: map[string]string{
+										"AccessZone":        "System",
+										"AzServiceIP":       "127.0.0.1",
+										"ClusterName":       "pieisi93x",
+										"ID":                "19",
+										"Name":              "k8s-7242537ae1",
+										"Path":              "/ifs/data/csi/k8s-7242537ae1",
+										"RootClientEnabled": "false",
+										"storage.kubernetes.io/csiProvisionerIdentity": "1652862466458-8081-csi-isilon.dellemc.com",
+									},
+									VolumeHandle: "k8s-7242537ae1=_=_=19=_=_=System=_=_=pieisi93x",
+								},
+							},
+							ClaimRef: &corev1.ObjectReference{
+								Name:      "pvc-name",
+								Namespace: "namespace-1",
+								UID:       "pvc-uid",
+							},
+							StorageClassName: "storage-class-name",
+						},
+						Status: corev1.PersistentVolumeStatus{
+							Phase: "Bound",
+						},
+					},
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:              "k8s-7242537ae2",
+							CreationTimestamp: metav1.Time{Time: t1},
+						},
+						Spec: corev1.PersistentVolumeSpec{
+							Capacity: map[corev1.ResourceName]resource.Quantity{
+								corev1.ResourceStorage: resource.MustParse("16Gi"),
+							},
+							PersistentVolumeSource: corev1.PersistentVolumeSource{
+								CSI: &corev1.CSIPersistentVolumeSource{
+									Driver: "csi-isilon.dellemc.com",
+									VolumeAttributes: map[string]string{
+										"AccessZone":        "System",
+										"AzServiceIP":       "127.0.0.1",
+										"ClusterName":       "pieisi93x",
+										"ID":                "19",
+										"Name":              "k8s-7242537ae2",
+										"Path":              "/ifs/data/csi/k8s-7242537ae2",
+										"RootClientEnabled": "false",
+										"storage.kubernetes.io/csiProvisionerIdentity": "1652862466458-8081-csi-isilon.dellemc.com",
+									},
+									VolumeHandle: "k8s-7242537ae2=_=_=19=_=_=System=_=_=pieisi93x",
+								},
+							},
+							ClaimRef:         nil,
+							StorageClassName: "storage-class-name",
+						},
+						Status: corev1.PersistentVolumeStatus{
+							Phase: "Available",
+						},
+					},
+				},
+			}
+
+			api.EXPECT().GetPersistentVolumes().Times(1).Return(volumes, nil)
+
+			finder := k8s.VolumeFinder{API: api, DriverNames: []string{"csi-isilon.dellemc.com"}, Logger: logrus.New()}
+			return finder, check(hasNoError, checkExpectedOutput([]k8s.VolumeInfo{
+				{
+					Namespace:              "namespace-1",
+					PersistentVolumeClaim:  "pvc-uid",
+					PersistentVolumeStatus: "Bound",
+					VolumeClaimName:        "pvc-name",
+					PersistentVolume:       "k8s-7242537ae1",
+					StorageClass:           "storage-class-name",
+					Driver:                 "csi-isilon.dellemc.com",
+					ProvisionedSize:        "16Gi",
+					VolumeHandle:           "k8s-7242537ae1=_=_=19=_=_=System=_=_=pieisi93x",
+					IsiPath:                "/ifs/data/csi",
+					CreatedTime:            t1.String(),
+				},
+			})), ctrl
+		},
+
 		"error calling k8s": func(*testing.T) (k8s.VolumeFinder, []checkFn, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			api := mocks.NewMockVolumeGetter(ctrl)
