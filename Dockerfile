@@ -1,6 +1,6 @@
 ARG BASEIMAGE
 
-# Build the manager binary
+# Build the sdk image
 FROM golang:1.21 as builder
 
 # Set envirment variable
