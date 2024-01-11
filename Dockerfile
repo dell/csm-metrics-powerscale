@@ -1,6 +1,6 @@
 ARG BASEIMAGE
 
-# Build the sdk image
+# Build the sdk binary
 FROM golang:1.21 as builder
 
 # Set envirment variable
@@ -11,11 +11,12 @@ ENV CMD_PATH cmd/metrics-powerscale/main.go
 COPY . /go/src/$APP_NAME
 WORKDIR /go/src/$APP_NAME
 
-# Build
+# Build the binary
 RUN go install github.com/golang/mock/mockgen@v1.6.0
 RUN go generate ./...
 RUN CGO_ENABLED=0 GOOS=linux go build -o /go/src/service /go/src/$APP_NAME/$CMD_PATH
 
+# Build the sdk image
 FROM $BASEIMAGE as final
 LABEL vendor="Dell Inc." \
       name="csm-metrics-powerscale" \
