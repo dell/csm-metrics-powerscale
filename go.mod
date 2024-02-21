@@ -1,6 +1,6 @@
 module github.com/dell/csm-metrics-powerscale
 
-go 1.21
+go 1.22
 
 require (
 	github.com/dell/goisilon v1.14.0
