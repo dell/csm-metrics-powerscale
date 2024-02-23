@@ -43,6 +43,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Run Go Security
         uses: securego/gosec@master
+        with:
+          args: ./...
   malware_security_scan:
     name: Malware Scanner
     runs-on: ubuntu-latest
@@ -60,6 +62,8 @@ jobs:
     steps:
       - name: Set up Go latest
         uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
         id: go
       - name: Checkout the code
         uses: actions/checkout@v4
