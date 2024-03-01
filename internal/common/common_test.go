@@ -107,7 +107,7 @@ func getHandler() http.Handler {
 
 func getRouter() http.Handler {
 	isilonRouter := mux.NewRouter()
-	isilonRouter.HandleFunc("/platform/latest/", func(w http.ResponseWriter, r *http.Request) {
+	isilonRouter.HandleFunc("/platform/latest/", func(w http.ResponseWriter, _ *http.Request) {
 		w.Write([]byte("{\"latest\": \"14\"}"))
 	})
 	return isilonRouter

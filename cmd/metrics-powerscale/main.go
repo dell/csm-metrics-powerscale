@@ -124,7 +124,7 @@ func main() {
 	updateService(powerScaleSvc, logger)
 
 	viper.WatchConfig()
-	viper.OnConfigChange(func(e fsnotify.Event) {
+	viper.OnConfigChange(func(_ fsnotify.Event) {
 		updateLoggingSettings(logger)
 		updateCollectorAddress(config, exporter, logger)
 		updatePowerScaleConnection(powerScaleSvc, storageClassFinder, volumeFinder, logger)
@@ -134,7 +134,7 @@ func main() {
 	})
 
 	configFileListener.WatchConfig()
-	configFileListener.OnConfigChange(func(e fsnotify.Event) {
+	configFileListener.OnConfigChange(func(_ fsnotify.Event) {
 		updatePowerScaleConnection(powerScaleSvc, storageClassFinder, volumeFinder, logger)
 	})
 
