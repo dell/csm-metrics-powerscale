@@ -39,19 +39,19 @@ func Test_GetPersistentVolumes(t *testing.T) {
 	type configFn func() (*rest.Config, error)
 	check := func(fns ...checkFn) []checkFn { return fns }
 
-	hasNoError := func(t *testing.T, volumes *corev1.PersistentVolumeList, err error) {
+	hasNoError := func(t *testing.T, _ *corev1.PersistentVolumeList, err error) {
 		if err != nil {
 			t.Fatalf("expected no error")
 		}
 	}
 
 	checkExpectedOutput := func(expectedOutput *corev1.PersistentVolumeList) func(t *testing.T, volumes *corev1.PersistentVolumeList, err error) {
-		return func(t *testing.T, volumes *corev1.PersistentVolumeList, err error) {
+		return func(t *testing.T, volumes *corev1.PersistentVolumeList, _ error) {
 			assert.Equal(t, expectedOutput, volumes)
 		}
 	}
 
-	hasError := func(t *testing.T, volumes *corev1.PersistentVolumeList, err error) {
+	hasError := func(t *testing.T, _ *corev1.PersistentVolumeList, err error) {
 		if err == nil {
 			t.Fatalf("expected error")
 		}
@@ -75,7 +75,7 @@ func Test_GetPersistentVolumes(t *testing.T) {
 			return connect, nil, check(hasNoError, checkExpectedOutput(volumes))
 		},
 		"error connecting": func(*testing.T) (connectFn, configFn, []checkFn) {
-			connect := func(api *k8s.API) error {
+			connect := func(_ *k8s.API) error {
 				return errors.New("error")
 			}
 			return connect, nil, check(hasError)
@@ -115,19 +115,19 @@ func Test_GetStorageClasses(t *testing.T) {
 	type configFn func() (*rest.Config, error)
 	check := func(fns ...checkFn) []checkFn { return fns }
 
-	hasNoError := func(t *testing.T, volumes *v1.StorageClassList, err error) {
+	hasNoError := func(t *testing.T, _ *v1.StorageClassList, err error) {
 		if err != nil {
 			t.Fatalf("expected no error")
 		}
 	}
 
 	checkExpectedOutput := func(expectedOutput *v1.StorageClassList) func(t *testing.T, volumes *v1.StorageClassList, err error) {
-		return func(t *testing.T, volumes *v1.StorageClassList, err error) {
+		return func(t *testing.T, volumes *v1.StorageClassList, _ error) {
 			assert.Equal(t, expectedOutput, volumes)
 		}
 	}
 
-	hasError := func(t *testing.T, volumes *v1.StorageClassList, err error) {
+	hasError := func(t *testing.T, _ *v1.StorageClassList, err error) {
 		if err == nil {
 			t.Fatalf("expected error")
 		}
@@ -159,7 +159,7 @@ func Test_GetStorageClasses(t *testing.T) {
 			return connect, nil, check(hasNoError, checkExpectedOutput(storageClasses))
 		},
 		"error connecting": func(*testing.T) (connectFn, configFn, []checkFn) {
-			connect := func(api *k8s.API) error {
+			connect := func(_ *k8s.API) error {
 				return errors.New("error")
 			}
 			return connect, nil, check(hasError)
@@ -212,7 +212,7 @@ func Test_NewForConfigError(t *testing.T) {
 	oldNewConfigFn := k8s.NewConfigFn
 	defer func() { k8s.NewConfigFn = oldNewConfigFn }()
 	expected := "could not create Clientset from KubeConfig"
-	k8s.NewConfigFn = func(config *rest.Config) (*kubernetes.Clientset, error) {
+	k8s.NewConfigFn = func(_ *rest.Config) (*kubernetes.Clientset, error) {
 		return nil, fmt.Errorf(expected)
 	}
 

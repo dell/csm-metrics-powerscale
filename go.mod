@@ -3,7 +3,7 @@ module github.com/dell/csm-metrics-powerscale
 go 1.22
 
 require (
-	github.com/dell/goisilon v1.14.0
+	github.com/dell/goisilon v1.15.0
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/golang/mock v1.6.0
 	github.com/gorilla/mux v1.8.0
@@ -23,7 +23,9 @@ require (
 )
 
 require (
+	github.com/PuerkitoBio/goquery v1.8.1 // indirect
 	github.com/akutz/gournal v0.5.0 // indirect
+	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
