@@ -25,6 +25,7 @@ LABEL vendor="Dell Inc." \
       description="Provides insight into storage usage and performance as it relates to the CSI (Container Storage Interface) Driver for Dell PowerScale" \
       version="2.0.0" \
       license="Apache-2.0"
-
+      
+COPY /licenses /licenses
 COPY --from=builder /go/src/service /
 ENTRYPOINT ["/service"]
