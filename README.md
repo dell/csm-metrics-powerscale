@@ -11,7 +11,7 @@ You may obtain a copy of the License at
 # Observability Module for PowerScale
 
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.0%20adopted-ff69b4.svg)](https://github.com/dell/csm/blob/main/docs/CODE_OF_CONDUCT.md)
-[![License](https://img.shields.io/github/license/dell/csm-metrics-powerscale)](LICENSE)
+[![License](https://img.shields.io/github/license/dell/csm-metrics-powerscale)](https://github.com/dell/csm-metrics-powerscale/blob/main/licenses/LICENSE)
 [![Docker Pulls](https://img.shields.io/docker/pulls/dellemc/csm-metrics-powerscale)](https://hub.docker.com/r/dellemc/csm-metrics-powerscale)
 [![Go version](https://img.shields.io/github/go-mod/go-version/dell/csm-metrics-powerscale)](go.mod)
 [![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/dell/csm-metrics-powerscale?include_prereleases&label=latest&style=flat-square)](https://github.com/dell/csm-metrics-powerscale/releases/latest)
