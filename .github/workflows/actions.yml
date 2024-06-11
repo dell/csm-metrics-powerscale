@@ -72,7 +72,12 @@ jobs:
       - name: Get dependencies
         run:  go mod download
       - name: Build csm-metrics-powerscale Docker Image
-        run: make clean build docker  
+        run: |
+         chmod +x ./scripts/build_ubi_micro.sh
+         make build-base-image
+         podman build -t docker.io/csm-metrics-powerscale -f ./Dockerfile --build-arg GOIMAGE=golang:latest --build-arg BASEIMAGE="localhost/mpsc-ubimicro"
+         podman save docker.io/library/csm-metrics-powerscale -o /tmp/csm-metrics-powerscale.tar
+         docker load -i /tmp/csm-metrics-powerscale.tar
       - name: Run Trivy action
         uses: aquasecurity/trivy-action@master
         with:
