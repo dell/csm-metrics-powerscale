@@ -108,7 +108,7 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 			cluster.Verbose = defaultVerbose
 		}
 
-		cluster.IsiAuthType = uint8(viper.GetInt("POWERSCALE_ISICLIENT_AUTH_TYPE"))
+		cluster.IsiAuthType = uint8(viper.GetInt("POWERSCALE_ISICLIENT_AUTH_TYPE")) // #nosec G115 -- This is a false positive
 		if cluster.IsiAuthType != 1 && cluster.IsiAuthType != 0 {
 			logger.Warningf("POWERSCALE_ISICLIENT_AUTH_TYPE is invalid, setting it to defaultIsiAuthType: %d", defaultIsiAuthType)
 			cluster.IsiAuthType = defaultIsiAuthType

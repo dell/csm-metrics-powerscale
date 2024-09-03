@@ -193,7 +193,7 @@ func (s *PowerScaleService) pushClusterQuotaMetrics(ctx context.Context, cluster
 				if err != nil {
 					s.Logger.WithError(err).WithField("cluster_name", metrics.clusterMeta.ClusterName).Error("recording quota metrics for cluster")
 				} else {
-					ch <- fmt.Sprintf(metrics.clusterMeta.ClusterName)
+					ch <- metrics.clusterMeta.ClusterName
 				}
 			}(metrics)
 		}
@@ -426,7 +426,7 @@ func (s *PowerScaleService) pushVolumeQuotaMetrics(ctx context.Context, volumeMe
 				if err != nil {
 					s.Logger.WithError(err).WithField("volume_id", metrics.volumeMeta.ID).Error("recording metrics for volume")
 				} else {
-					ch <- fmt.Sprintf(metrics.volumeMeta.ID)
+					ch <- metrics.volumeMeta.ID
 				}
 			}(metrics)
 		}
