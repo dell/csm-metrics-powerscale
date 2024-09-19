@@ -102,7 +102,7 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 			cluster.IsiVolumePathPermissions = defaultIsiPermission
 		}
 
-		cluster.Verbose = uint(viper.GetInt("POWERSCALE_ISICLIENT_VERBOSE"))
+		cluster.Verbose = uint(viper.GetInt("POWERSCALE_ISICLIENT_VERBOSE")) // #nosec G115 -- This is a false positive
 		if cluster.Verbose != 0 && cluster.Verbose != 1 && cluster.Verbose != 2 {
 			logger.Warningf("POWERSCALE_ISICLIENT_VERBOSE is invalid,setting to defaultVerbose: %d", defaultVerbose)
 			cluster.Verbose = defaultVerbose
