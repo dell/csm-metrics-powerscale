@@ -19,17 +19,15 @@ package service
 import (
 	"context"
 	"errors"
-	"sync"
-
 	"github.com/dell/csm-metrics-powerscale/internal/utils"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric/instrument/asyncfloat64"
-	"go.opentelemetry.io/otel/metric/instrument/asyncint64"
+	"go.opentelemetry.io/otel/metric"
+	"sync"
 )
 
 // MetricsRecorder supports recording volume and cluster metric
 //
-//go:generate mockgen -destination=mocks/metrics_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service MetricsRecorder,AsyncMetricCreator
+//go:generate mockgen -destination=mocks/metrics_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service MetricsRecorder,MeterCreater
 type MetricsRecorder interface {
 	RecordVolumeQuota(ctx context.Context, meta interface{}, metric *VolumeQuotaMetricsRecord) error
 	RecordClusterQuota(ctx context.Context, meta interface{}, metric *ClusterQuotaRecord) error
@@ -37,18 +35,16 @@ type MetricsRecorder interface {
 	RecordClusterPerformanceStatsMetrics(ctx context.Context, metric *ClusterPerformanceStatsMetricsRecord) error
 }
 
-// AsyncMetricCreator to create AsyncInt64/AsyncFloat64 InstrumentProvider
+// MeterCreater interface is used to create and provide Meter instances, which are used to report measurements
 //
-//go:generate mockgen -destination=mocks/asyncint64mock/instrument_asyncint64_provider_mocks.go -package=asyncint64mock go.opentelemetry.io/otel/metric/instrument/asyncint64 InstrumentProvider
-//go:generate mockgen -destination=mocks/asyncfloat64mock/instrument_asyncfloat64_provider_mocks.go -package=asyncfloat64mock go.opentelemetry.io/otel/metric/instrument/asyncfloat64 InstrumentProvider
-type AsyncMetricCreator interface {
-	AsyncInt64() asyncint64.InstrumentProvider
-	AsyncFloat64() asyncfloat64.InstrumentProvider
+//go:generate mockgen -destination=mocks/meter_mocks.go -package=mocks go.opentelemetry.io/otel/metric Meter
+type MeterCreator interface {
+	MeterProvider() (metric.Meter, error)
 }
 
 // MetricsWrapper contains data used for pushing metrics data
 type MetricsWrapper struct {
-	Meter                          AsyncMetricCreator
+	Meter                          metric.Meter
 	Labels                         sync.Map
 	VolumeMetrics                  sync.Map
 	ClusterCapacityStatsMetrics    sync.Map
@@ -59,32 +55,32 @@ type MetricsWrapper struct {
 
 // VolumeQuotaMetrics contains volume quota metrics data
 type VolumeQuotaMetrics struct {
-	QuotaSubscribed       asyncfloat64.UpDownCounter
-	HardQuotaRemaining    asyncfloat64.UpDownCounter
-	QuotaSubscribedPct    asyncfloat64.UpDownCounter
-	HardQuotaRemainingPct asyncfloat64.UpDownCounter
+	QuotaSubscribed       metric.Float64ObservableUpDownCounter
+	HardQuotaRemaining    metric.Float64ObservableUpDownCounter
+	QuotaSubscribedPct    metric.Float64ObservableUpDownCounter
+	HardQuotaRemainingPct metric.Float64ObservableUpDownCounter
 }
 
 // ClusterQuotaMetrics contains quota capacity in all directories
 type ClusterQuotaMetrics struct {
-	TotalHardQuotaGigabytes asyncfloat64.UpDownCounter
-	TotalHardQuotaPct       asyncfloat64.UpDownCounter
+	TotalHardQuotaGigabytes metric.Float64ObservableUpDownCounter
+	TotalHardQuotaPct       metric.Float64ObservableUpDownCounter
 }
 
 // ClusterCapacityStatsMetrics contains the capacity stats metrics related to a cluster
 type ClusterCapacityStatsMetrics struct {
-	TotalCapacity     asyncfloat64.UpDownCounter
-	RemainingCapacity asyncfloat64.UpDownCounter
-	UsedPercentage    asyncfloat64.UpDownCounter
+	TotalCapacity     metric.Float64ObservableUpDownCounter
+	RemainingCapacity metric.Float64ObservableUpDownCounter
+	UsedPercentage    metric.Float64ObservableUpDownCounter
 }
 
 // ClusterPerformanceStatsMetrics contains the performance stats metrics related to a cluster
 type ClusterPerformanceStatsMetrics struct {
-	CPUPercentage           asyncfloat64.UpDownCounter
-	DiskReadOperationsRate  asyncfloat64.UpDownCounter
-	DiskWriteOperationsRate asyncfloat64.UpDownCounter
-	DiskReadThroughputRate  asyncfloat64.UpDownCounter
-	DiskWriteThroughputRate asyncfloat64.UpDownCounter
+	CPUPercentage           metric.Float64ObservableUpDownCounter
+	DiskReadOperationsRate  metric.Float64ObservableUpDownCounter
+	DiskWriteOperationsRate metric.Float64ObservableUpDownCounter
+	DiskReadThroughputRate  metric.Float64ObservableUpDownCounter
+	DiskWriteThroughputRate metric.Float64ObservableUpDownCounter
 }
 
 type (
@@ -141,11 +137,11 @@ func updateLabels(prefix, metaID string, labels []attribute.KeyValue, mw *Metric
 }
 
 func (mw *MetricsWrapper) initClusterQuotaMetrics(prefix, metaID string, labels []attribute.KeyValue) (*ClusterQuotaMetrics, error) {
-	totalHardQuota, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "total_hard_quota_gigabytes")
+	totalHardQuota, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "total_hard_quota_gigabytes")
 	if err != nil {
 		return nil, err
 	}
-	TotalHardQuotaPct, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "total_hard_quota_percentage")
+	TotalHardQuotaPct, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "total_hard_quota_percentage")
 	if err != nil {
 		return nil, err
 	}
@@ -198,19 +194,19 @@ func (mw *MetricsWrapper) RecordClusterQuota(ctx context.Context, meta interface
 }
 
 func (mw *MetricsWrapper) initVolumeQuotaMetrics(prefix, metaID string, labels []attribute.KeyValue) (*VolumeQuotaMetrics, error) {
-	quotaSubscribed, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "quota_subscribed_gigabytes")
+	quotaSubscribed, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "quota_subscribed_gigabytes")
 	if err != nil {
 		return nil, err
 	}
-	hardQuotaRemaining, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "hard_quota_remaining_gigabytes")
+	hardQuotaRemaining, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_gigabytes")
 	if err != nil {
 		return nil, err
 	}
-	quotaSubscribedPct, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "quota_subscribed_percentage")
+	quotaSubscribedPct, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "quota_subscribed_percentage")
 	if err != nil {
 		return nil, err
 	}
-	hardQuotaRemainingPct, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "hard_quota_remaining_percentage")
+	hardQuotaRemainingPct, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_percentage")
 	if err != nil {
 		return nil, err
 	}
@@ -344,15 +340,15 @@ func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(ctx context.Conte
 }
 
 func (mw *MetricsWrapper) initClusterCapacityStatsMetrics(prefix string, id string, labels []attribute.KeyValue) (*ClusterCapacityStatsMetrics, error) {
-	totalCapacity, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "total_capacity_terabytes")
+	totalCapacity, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "total_capacity_terabytes")
 	if err != nil {
 		return nil, err
 	}
-	remainingCapacity, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "remaining_capacity_terabytes")
+	remainingCapacity, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "remaining_capacity_terabytes")
 	if err != nil {
 		return nil, err
 	}
-	usedPercentage, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "used_capacity_percentage")
+	usedPercentage, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "used_capacity_percentage")
 	if err != nil {
 		return nil, err
 	}
@@ -370,23 +366,23 @@ func (mw *MetricsWrapper) initClusterCapacityStatsMetrics(prefix string, id stri
 }
 
 func (mw *MetricsWrapper) initClusterPerformanceStatsMetrics(prefix string, id string, labels []attribute.KeyValue) (*ClusterPerformanceStatsMetrics, error) {
-	cpuPercentage, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "cpu_use_rate")
+	cpuPercentage, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "cpu_use_rate")
 	if err != nil {
 		return nil, err
 	}
-	diskReadOperationsRate, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "disk_read_operation_rate")
+	diskReadOperationsRate, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_read_operation_rate")
 	if err != nil {
 		return nil, err
 	}
-	diskWriteOperationsRate, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "disk_write_operation_rate")
+	diskWriteOperationsRate, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_write_operation_rate")
 	if err != nil {
 		return nil, err
 	}
-	diskReadThroughput, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "disk_throughput_read_rate_megabytes_per_second")
+	diskReadThroughput, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_throughput_read_rate_megabytes_per_second")
 	if err != nil {
 		return nil, err
 	}
-	diskWriteThroughput, err := mw.Meter.AsyncFloat64().UpDownCounter(prefix + "disk_throughput_write_rate_megabytes_per_second")
+	diskWriteThroughput, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_throughput_write_rate_megabytes_per_second")
 	if err != nil {
 		return nil, err
 	}

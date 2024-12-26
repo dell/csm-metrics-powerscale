@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"go.opentelemetry.io/otel"
 	"os"
 	"strconv"
 	"strings"
@@ -30,10 +31,7 @@ import (
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
 	"github.com/dell/csm-metrics-powerscale/internal/service"
 	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
-
 	"github.com/sirupsen/logrus"
-
-	"go.opentelemetry.io/otel/metric/global"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
@@ -110,7 +108,7 @@ func main() {
 
 	powerScaleSvc := &service.PowerScaleService{
 		MetricsWrapper: &service.MetricsWrapper{
-			Meter: global.Meter("powerscale"),
+			Meter: otel.Meter("powerscale"),
 		},
 		Logger:             logger,
 		VolumeFinder:       volumeFinder,
