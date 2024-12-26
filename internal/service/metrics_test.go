@@ -19,6 +19,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"go.opentelemetry.io/otel"
 	"testing"
 
 	"github.com/dell/csm-metrics-powerscale/internal/service/mocks/asyncfloat64mock"
@@ -28,7 +29,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric/global"
 )
 
 func Test_Volume_Quota_Metrics_Record(t *testing.T) {
@@ -60,11 +60,11 @@ func Test_Volume_Quota_Metrics_Record(t *testing.T) {
 			getMeter := func(prefix string) *service.MetricsWrapper {
 				meter := mocks.NewMockAsyncMetricCreator(ctrl)
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-				otMeter := global.Meter(prefix + "_test")
-				subscribed, _ := otMeter.AsyncFloat64().UpDownCounter(prefix + "subscribed_quota")
-				hardQuota, _ := otMeter.AsyncFloat64().UpDownCounter(prefix + "hard_quota_remaining_gigabytes")
-				subscribedPct, _ := otMeter.AsyncFloat64().UpDownCounter(prefix + "subscribed_quota_percentage")
-				hardQuotaPct, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "hard_quota_remaining_percentage")
+				otMeter := otel.Meter(prefix + "_test")
+				subscribed, _ := otMeter.Float64ObservableUpDownCounter(prefix + "subscribed_quota")
+				hardQuota, _ := otMeter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_gigabytes")
+				subscribedPct, _ := otMeter.Float64ObservableUpDownCounter(prefix + "subscribed_quota_percentage")
+				hardQuotaPct, err := otMeter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_percentage")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -91,8 +91,8 @@ func Test_Volume_Quota_Metrics_Record(t *testing.T) {
 			getMeter := func(prefix string) *service.MetricsWrapper {
 				meter := mocks.NewMockAsyncMetricCreator(ctrl)
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-				otMeter := global.Meter(prefix + "_test")
-				subscribed, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "quota_subscribed_gigabytes")
+				otMeter := otel.Meter(prefix + "_test")
+				subscribed, err := otMeter.Float64ObservableUpDownCounter(prefix + "quota_subscribed_gigabytes")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -116,9 +116,9 @@ func Test_Volume_Quota_Metrics_Record(t *testing.T) {
 			getMeter := func(prefix string) *service.MetricsWrapper {
 				meter := mocks.NewMockAsyncMetricCreator(ctrl)
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-				otMeter := global.Meter(prefix + "_test")
-				subscribed, _ := otMeter.AsyncFloat64().UpDownCounter(prefix + "quota_subscribed_gigabytes")
-				hardQuota, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "hard_quota_remaining_gigabytes")
+				otMeter := otel.Meter(prefix + "_test")
+				subscribed, _ := otMeter.Float64ObservableUpDownCounter(prefix + "quota_subscribed_gigabytes")
+				hardQuota, err := otMeter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_gigabytes")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -182,10 +182,10 @@ func Test_Cluster_Quota_Metrics_Record(t *testing.T) {
 			getMeter := func(prefix string) *service.MetricsWrapper {
 				meter := mocks.NewMockAsyncMetricCreator(ctrl)
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-				otMeter := global.Meter(prefix + "_test")
+				otMeter := otel.Meter(prefix + "_test")
 
-				clusterSubscribed, _ := otMeter.AsyncFloat64().UpDownCounter("powerscale_directory_total_hard_quota_gigabytes")
-				clusterSubscribedPct, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_directory_total_hard_quota_percentage")
+				clusterSubscribed, _ := otMeter.Float64ObservableUpDownCounter("powerscale_directory_total_hard_quota_gigabytes")
+				clusterSubscribedPct, err := otMeter.Float64ObservableUpDownCounter("powerscale_directory_total_hard_quota_percentage")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -210,8 +210,8 @@ func Test_Cluster_Quota_Metrics_Record(t *testing.T) {
 			getMeter := func(prefix string) *service.MetricsWrapper {
 				meter := mocks.NewMockAsyncMetricCreator(ctrl)
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-				otMeter := global.Meter(prefix + "_test")
-				clusterSubscribed, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_directory_total_hard_quota_gigabytes")
+				otMeter := otel.Meter(prefix + "_test")
+				clusterSubscribed, err := otMeter.Float64ObservableUpDownCounter("powerscale_directory_total_hard_quota_gigabytes")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -235,9 +235,9 @@ func Test_Cluster_Quota_Metrics_Record(t *testing.T) {
 			getMeter := func(prefix string) *service.MetricsWrapper {
 				meter := mocks.NewMockAsyncMetricCreator(ctrl)
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-				otMeter := global.Meter(prefix + "_test")
-				clusterSubscribed, _ := otMeter.AsyncFloat64().UpDownCounter("powerscale_directory_total_hard_quota_gigabytes")
-				clusterSubscribedPct, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_directory_total_hard_quota_percentage")
+				otMeter := otel.Meter(prefix + "_test")
+				clusterSubscribed, _ := otMeter.Float64ObservableUpDownCounter("powerscale_directory_total_hard_quota_gigabytes")
+				clusterSubscribedPct, err := otMeter.Float64ObservableUpDownCounter("powerscale_directory_total_hard_quota_percentage")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -318,11 +318,11 @@ func Test_Volume_Metrics_Label_Update(t *testing.T) {
 
 	meter := mocks.NewMockAsyncMetricCreator(ctrl)
 	provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-	otMeter := global.Meter("powerscale_volume_quota_test")
-	subscribed, _ := otMeter.AsyncFloat64().UpDownCounter("powerscale_volume_quota_subscribed_gigabytes")
-	hardQuota, _ := otMeter.AsyncFloat64().UpDownCounter("powerscale_volume_hard_quota_remaining_gigabytes")
-	subscribedPct, _ := otMeter.AsyncFloat64().UpDownCounter("powerscale_volume_quota_subscribed_quota_percentage")
-	hardQuotaPct, err := otMeter.AsyncFloat64().UpDownCounter("powerscale_volume_hard_quota_remaining_percentage")
+	otMeter := otel.Meter("powerscale_volume_quota_test")
+	subscribed, _ := otMeter.Float64ObservableUpDownCounter("powerscale_volume_quota_subscribed_gigabytes")
+	hardQuota, _ := otMeter.Float64ObservableUpDownCounter("powerscale_volume_hard_quota_remaining_gigabytes")
+	subscribedPct, _ := otMeter.Float64ObservableUpDownCounter("powerscale_volume_quota_subscribed_quota_percentage")
+	hardQuotaPct, err := otMeter.Float64ObservableUpDownCounter("powerscale_volume_hard_quota_remaining_percentage")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,10 +391,10 @@ func Test_Cluster_Capacity_Stats_Metrics_Record(t *testing.T) {
 			getMeter := func(prefix string) *service.MetricsWrapper {
 				meter := mocks.NewMockAsyncMetricCreator(ctrl)
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-				otMeter := global.Meter(prefix + "_test")
-				total, _ := otMeter.AsyncFloat64().UpDownCounter(prefix + "total_capacity_terabytes")
-				avail, _ := otMeter.AsyncFloat64().UpDownCounter(prefix + "remaining_capacity_terabytes")
-				usedPercent, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "used_capacity_percentage")
+				otMeter := otel.Meter(prefix + "_test")
+				total, _ := otMeter.Float64ObservableUpDownCounter(prefix + "total_capacity_terabytes")
+				avail, _ := otMeter.Float64ObservableUpDownCounter(prefix + "remaining_capacity_terabytes")
+				usedPercent, err := otMeter.Float64ObservableUpDownCounter(prefix + "used_capacity_percentage")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -420,8 +420,8 @@ func Test_Cluster_Capacity_Stats_Metrics_Record(t *testing.T) {
 			getMeter := func(prefix string) *service.MetricsWrapper {
 				meter := mocks.NewMockAsyncMetricCreator(ctrl)
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-				otMeter := global.Meter(prefix + "_test")
-				total, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "total_capacity_terabytes")
+				otMeter := otel.Meter(prefix + "_test")
+				total, err := otMeter.Float64ObservableUpDownCounter(prefix + "total_capacity_terabytes")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -485,12 +485,12 @@ func Test_Cluster_Perf_Stats_Metrics_Record(t *testing.T) {
 			getMeter := func(prefix string) *service.MetricsWrapper {
 				meter := mocks.NewMockAsyncMetricCreator(ctrl)
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-				otMeter := global.Meter(prefix + "_test")
-				cpuPercentage, _ := otMeter.AsyncFloat64().UpDownCounter(prefix + "cpu_use_rate")
-				diskReadOperationsRate, _ := otMeter.AsyncFloat64().UpDownCounter(prefix + "disk_read_operation_rate")
-				diskWriteOperationsRate, _ := otMeter.AsyncFloat64().UpDownCounter(prefix + "disk_write_operation_rate")
-				diskReadThroughputRate, _ := otMeter.AsyncFloat64().UpDownCounter(prefix + "disk_throughput_read_rate_megabytes_per_second")
-				diskWriteThroughputRate, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "disk_throughput_write_rate_megabytes_per_second")
+				otMeter := otel.Meter(prefix + "_test")
+				cpuPercentage, _ := otMeter.Float64ObservableUpDownCounter(prefix + "cpu_use_rate")
+				diskReadOperationsRate, _ := otMeter.Float64ObservableUpDownCounter(prefix + "disk_read_operation_rate")
+				diskWriteOperationsRate, _ := otMeter.Float64ObservableUpDownCounter(prefix + "disk_write_operation_rate")
+				diskReadThroughputRate, _ := otMeter.Float64ObservableUpDownCounter(prefix + "disk_throughput_read_rate_megabytes_per_second")
+				diskWriteThroughputRate, err := otMeter.Float64ObservableUpDownCounter(prefix + "disk_throughput_write_rate_megabytes_per_second")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -518,8 +518,8 @@ func Test_Cluster_Perf_Stats_Metrics_Record(t *testing.T) {
 			getMeter := func(prefix string) *service.MetricsWrapper {
 				meter := mocks.NewMockAsyncMetricCreator(ctrl)
 				provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-				otMeter := global.Meter(prefix + "_test")
-				total, err := otMeter.AsyncFloat64().UpDownCounter(prefix + "disk_read_operation_rate")
+				otMeter := otel.Meter(prefix + "_test")
+				total, err := otMeter.Float64ObservableUpDownCounter(prefix + "disk_read_operation_rate")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -587,10 +587,10 @@ func Test_Cluster_Stats_Metrics_Label_Update(t *testing.T) {
 
 	meter := mocks.NewMockAsyncMetricCreator(ctrl)
 	provider := asyncfloat64mock.NewMockInstrumentProvider(ctrl)
-	otMeter := global.Meter("powerscale_cluster_test")
-	total, _ := otMeter.AsyncFloat64().UpDownCounter("powerscale_cluster_total_capacity_terabytes")
-	avail, _ := otMeter.AsyncFloat64().UpDownCounter("remaining_capacity_terabytes")
-	usedPercent, err := otMeter.AsyncFloat64().UpDownCounter("used_capacity_percentage")
+	otMeter := otel.Meter("powerscale_cluster_test")
+	total, _ := otMeter.Float64ObservableUpDownCounter("powerscale_cluster_total_capacity_terabytes")
+	avail, _ := otMeter.Float64ObservableUpDownCounter("remaining_capacity_terabytes")
+	usedPercent, err := otMeter.Float64ObservableUpDownCounter("used_capacity_percentage")
 	if err != nil {
 		t.Fatal(err)
 	}
