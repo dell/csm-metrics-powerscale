@@ -19,11 +19,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"go.opentelemetry.io/otel"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel"
 
 	"github.com/dell/csm-metrics-powerscale/internal/common"
 	"github.com/dell/csm-metrics-powerscale/internal/entrypoint"

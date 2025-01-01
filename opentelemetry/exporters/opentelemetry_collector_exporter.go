@@ -18,10 +18,11 @@ package otlexporters
 
 import (
 	"context"
+	"time"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/sdk/metric"
-	"time"
 )
 
 // OtlCollectorExporter is the exporter for the OpenTelemetry Collector

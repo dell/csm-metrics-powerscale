@@ -19,15 +19,16 @@ package service
 import (
 	"context"
 	"errors"
+	"sync"
+
 	"github.com/dell/csm-metrics-powerscale/internal/utils"
 	"go.opentelemetry.io/otel/attribute"
-	Metric "go.opentelemetry.io/otel/metric"
-	"sync"
+	otelMetric "go.opentelemetry.io/otel/metric"
 )
 
 // MetricsRecorder supports recording volume and cluster metric
 //
-//go:generate mockgen -destination=mocks/metrics_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service MetricsRecorder,MeterCreater
+//go:generate mockgen -destination=mocks/metrics_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service MetricsRecorder,MeterCreator
 type MetricsRecorder interface {
 	RecordVolumeQuota(ctx context.Context, meta interface{}, metric *VolumeQuotaMetricsRecord) error
 	RecordClusterQuota(ctx context.Context, meta interface{}, metric *ClusterQuotaRecord) error
@@ -35,16 +36,16 @@ type MetricsRecorder interface {
 	RecordClusterPerformanceStatsMetrics(ctx context.Context, metric *ClusterPerformanceStatsMetricsRecord) error
 }
 
-// MeterCreater interface is used to create and provide Meter instances, which are used to report measurements
+// MeterCreator interface is used to create and provide Meter instances, which are used to report measurements
 //
 //go:generate mockgen -destination=mocks/meter_mocks.go -package=mocks go.opentelemetry.io/otel/metric Meter
 type MeterCreator interface {
-	MeterProvider() (Metric.Meter, error)
+	MeterProvider() (otelMetric.Meter, error)
 }
 
 // MetricsWrapper contains data used for pushing metrics data
 type MetricsWrapper struct {
-	Meter                          Metric.Meter
+	Meter                          otelMetric.Meter
 	Labels                         sync.Map
 	VolumeMetrics                  sync.Map
 	ClusterCapacityStatsMetrics    sync.Map
@@ -55,32 +56,32 @@ type MetricsWrapper struct {
 
 // VolumeQuotaMetrics contains volume quota metrics data
 type VolumeQuotaMetrics struct {
-	QuotaSubscribed       Metric.Float64ObservableUpDownCounter
-	HardQuotaRemaining    Metric.Float64ObservableUpDownCounter
-	QuotaSubscribedPct    Metric.Float64ObservableUpDownCounter
-	HardQuotaRemainingPct Metric.Float64ObservableUpDownCounter
+	QuotaSubscribed       otelMetric.Float64ObservableUpDownCounter
+	HardQuotaRemaining    otelMetric.Float64ObservableUpDownCounter
+	QuotaSubscribedPct    otelMetric.Float64ObservableUpDownCounter
+	HardQuotaRemainingPct otelMetric.Float64ObservableUpDownCounter
 }
 
 // ClusterQuotaMetrics contains quota capacity in all directories
 type ClusterQuotaMetrics struct {
-	TotalHardQuotaGigabytes Metric.Float64ObservableUpDownCounter
-	TotalHardQuotaPct       Metric.Float64ObservableUpDownCounter
+	TotalHardQuotaGigabytes otelMetric.Float64ObservableUpDownCounter
+	TotalHardQuotaPct       otelMetric.Float64ObservableUpDownCounter
 }
 
 // ClusterCapacityStatsMetrics contains the capacity stats metrics related to a cluster
 type ClusterCapacityStatsMetrics struct {
-	TotalCapacity     Metric.Float64ObservableUpDownCounter
-	RemainingCapacity Metric.Float64ObservableUpDownCounter
-	UsedPercentage    Metric.Float64ObservableUpDownCounter
+	TotalCapacity     otelMetric.Float64ObservableUpDownCounter
+	RemainingCapacity otelMetric.Float64ObservableUpDownCounter
+	UsedPercentage    otelMetric.Float64ObservableUpDownCounter
 }
 
 // ClusterPerformanceStatsMetrics contains the performance stats metrics related to a cluster
 type ClusterPerformanceStatsMetrics struct {
-	CPUPercentage           Metric.Float64ObservableUpDownCounter
-	DiskReadOperationsRate  Metric.Float64ObservableUpDownCounter
-	DiskWriteOperationsRate Metric.Float64ObservableUpDownCounter
-	DiskReadThroughputRate  Metric.Float64ObservableUpDownCounter
-	DiskWriteThroughputRate Metric.Float64ObservableUpDownCounter
+	CPUPercentage           otelMetric.Float64ObservableUpDownCounter
+	DiskReadOperationsRate  otelMetric.Float64ObservableUpDownCounter
+	DiskWriteOperationsRate otelMetric.Float64ObservableUpDownCounter
+	DiskReadThroughputRate  otelMetric.Float64ObservableUpDownCounter
+	DiskWriteThroughputRate otelMetric.Float64ObservableUpDownCounter
 }
 
 type (
@@ -187,9 +188,9 @@ func (mw *MetricsWrapper) RecordClusterQuota(ctx context.Context, meta interface
 	}
 
 	metrics := metricsMapValue.(*ClusterQuotaMetrics)
-	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs Metric.Observer) error {
-		obs.ObserveFloat64(metrics.TotalHardQuotaGigabytes, utils.UnitsConvert(metric.totalHardQuota, utils.BYTES, utils.GB), Metric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.TotalHardQuotaPct, metric.totalHardQuotaPct, Metric.WithAttributes(labels...))
+	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs otelMetric.Observer) error {
+		obs.ObserveFloat64(metrics.TotalHardQuotaGigabytes, utils.UnitsConvert(metric.totalHardQuota, utils.BYTES, utils.GB), otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.TotalHardQuotaPct, metric.totalHardQuotaPct, otelMetric.WithAttributes(labels...))
 		return nil
 	},
 		metrics.TotalHardQuotaGigabytes,
@@ -265,13 +266,12 @@ func (mw *MetricsWrapper) RecordVolumeQuota(ctx context.Context, meta interface{
 	}
 
 	metrics := metricsMapValue.(*VolumeQuotaMetrics)
-	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs Metric.Observer) error {
-		obs.ObserveFloat64(metrics.QuotaSubscribed, utils.UnitsConvert(metric.quotaSubscribed, utils.BYTES, utils.GB), Metric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.HardQuotaRemaining, utils.UnitsConvert(metric.hardQuotaRemaining, utils.BYTES, utils.GB), Metric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.QuotaSubscribedPct, metric.quotaSubscribedPct, Metric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.HardQuotaRemainingPct, metric.hardQuotaRemainingPct, Metric.WithAttributes(labels...))
+	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs otelMetric.Observer) error {
+		obs.ObserveFloat64(metrics.QuotaSubscribed, utils.UnitsConvert(metric.quotaSubscribed, utils.BYTES, utils.GB), otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.HardQuotaRemaining, utils.UnitsConvert(metric.hardQuotaRemaining, utils.BYTES, utils.GB), otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.QuotaSubscribedPct, metric.quotaSubscribedPct, otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.HardQuotaRemainingPct, metric.hardQuotaRemainingPct, otelMetric.WithAttributes(labels...))
 		return nil
-
 	},
 		metrics.QuotaSubscribed,
 		metrics.HardQuotaRemaining,
@@ -306,12 +306,12 @@ func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(ctx context.Context,
 	}
 
 	metrics := metricsMapValue.(*ClusterCapacityStatsMetrics)
-	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs Metric.Observer) error {
-		obs.ObserveFloat64(metrics.TotalCapacity, utils.UnitsConvert(metric.TotalCapacity, utils.BYTES, utils.TB), Metric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.RemainingCapacity, utils.UnitsConvert(metric.RemainingCapacity, utils.BYTES, utils.TB), Metric.WithAttributes(labels...))
+	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs otelMetric.Observer) error {
+		obs.ObserveFloat64(metrics.TotalCapacity, utils.UnitsConvert(metric.TotalCapacity, utils.BYTES, utils.TB), otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.RemainingCapacity, utils.UnitsConvert(metric.RemainingCapacity, utils.BYTES, utils.TB), otelMetric.WithAttributes(labels...))
 
 		if metric.TotalCapacity != 0 {
-			obs.ObserveFloat64(metrics.UsedPercentage, 100*(metric.TotalCapacity-metric.RemainingCapacity)/metric.TotalCapacity, Metric.WithAttributes(labels...))
+			obs.ObserveFloat64(metrics.UsedPercentage, 100*(metric.TotalCapacity-metric.RemainingCapacity)/metric.TotalCapacity, otelMetric.WithAttributes(labels...))
 		}
 		return nil
 	},
@@ -346,12 +346,12 @@ func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(ctx context.Conte
 	}
 
 	metrics := metricsMapValue.(*ClusterPerformanceStatsMetrics)
-	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs Metric.Observer) error {
-		obs.ObserveFloat64(metrics.CPUPercentage, metric.CPUPercentage/10, Metric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.DiskReadOperationsRate, metric.DiskReadOperationsRate, Metric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.DiskWriteOperationsRate, metric.DiskWriteOperationsRate, Metric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.DiskReadThroughputRate, utils.UnitsConvert(metric.DiskReadThroughputRate, utils.BYTES, utils.MB), Metric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.DiskWriteThroughputRate, utils.UnitsConvert(metric.DiskWriteThroughputRate, utils.BYTES, utils.MB), Metric.WithAttributes(labels...))
+	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs otelMetric.Observer) error {
+		obs.ObserveFloat64(metrics.CPUPercentage, metric.CPUPercentage/10, otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.DiskReadOperationsRate, metric.DiskReadOperationsRate, otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.DiskWriteOperationsRate, metric.DiskWriteOperationsRate, otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.DiskReadThroughputRate, utils.UnitsConvert(metric.DiskReadThroughputRate, utils.BYTES, utils.MB), otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.DiskWriteThroughputRate, utils.UnitsConvert(metric.DiskWriteThroughputRate, utils.BYTES, utils.MB), otelMetric.WithAttributes(labels...))
 		return nil
 	},
 		metrics.CPUPercentage,
