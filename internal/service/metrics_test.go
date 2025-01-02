@@ -22,6 +22,7 @@ import (
 
 	"github.com/dell/csm-metrics-powerscale/internal/service"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 func TestMetricsWrapper_RecordClusterQuota(t *testing.T) {
@@ -212,6 +213,124 @@ func TestMetricsWrapper_RecordClusterPerformanceStatsMetrics(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := tt.mw.RecordClusterPerformanceStatsMetrics(tt.args.ctx, tt.args.metric); (err != nil) != tt.wantErr {
 				t.Errorf("MetricsWrapper.RecordClusterPerformanceStatsMetrics() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func assertEqual(a, b []attribute.KeyValue) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestMetricsWrapper_RecordClusterQuota_UpdateLabels(t *testing.T) {
+	mw := &service.MetricsWrapper{
+		Meter: otel.Meter("powerscale-test"),
+	}
+
+	tests := []struct {
+		name                string
+		initialMetaID       string
+		initialLabels       []attribute.KeyValue
+		inputClusterName    string
+		inputLabels         []attribute.KeyValue
+		expectLabelChange   bool
+		expectedLabelsAfter []attribute.KeyValue
+	}{
+		{
+			name:             "MetaID does not exist",
+			initialMetaID:    "",
+			initialLabels:    nil,
+			inputClusterName: "cluster-1",
+			inputLabels: []attribute.KeyValue{
+				attribute.String("ClusterName", "cluster-1"),
+				attribute.String("PlotWithMean", "No"),
+			},
+			expectLabelChange: true,
+			expectedLabelsAfter: []attribute.KeyValue{
+				attribute.String("ClusterName", "cluster-1"),
+				attribute.String("PlotWithMean", "No"),
+			},
+		},
+		{
+			name:             "MetaID exists but labels missing",
+			initialMetaID:    "cluster-1",
+			initialLabels:    nil,
+			inputClusterName: "cluster-1",
+			inputLabels: []attribute.KeyValue{
+				attribute.String("ClusterName", "cluster-1"),
+				attribute.String("PlotWithMean", "No"),
+			},
+			expectLabelChange: true,
+			expectedLabelsAfter: []attribute.KeyValue{
+				attribute.String("ClusterName", "cluster-1"),
+				attribute.String("PlotWithMean", "No"),
+			},
+		},
+		{
+			name:          "MetaID exists with mismatched labels",
+			initialMetaID: "cluster-1",
+			initialLabels: []attribute.KeyValue{
+				attribute.String("ClusterName", "cluster-1"),
+				attribute.String("PlotWithMean", "Yes"),
+			},
+			inputClusterName: "cluster-1",
+			inputLabels: []attribute.KeyValue{
+				attribute.String("ClusterName", "cluster-1"),
+				attribute.String("PlotWithMean", "No"),
+			},
+			expectLabelChange: true,
+			expectedLabelsAfter: []attribute.KeyValue{
+				attribute.String("ClusterName", "cluster-1"),
+				attribute.String("PlotWithMean", "No"),
+			},
+		},
+		{
+			name:          "MetaID exists with matching labels",
+			initialMetaID: "cluster-1",
+			initialLabels: []attribute.KeyValue{
+				attribute.String("ClusterName", "cluster-1"),
+				attribute.String("PlotWithMean", "No"),
+			},
+			inputClusterName: "cluster-1",
+			inputLabels: []attribute.KeyValue{
+				attribute.String("ClusterName", "cluster-1"),
+				attribute.String("PlotWithMean", "No"),
+			},
+			expectLabelChange: false,
+			expectedLabelsAfter: []attribute.KeyValue{
+				attribute.String("ClusterName", "cluster-1"),
+				attribute.String("PlotWithMean", "No"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.initialLabels != nil {
+				mw.Labels.Store(tt.initialMetaID, tt.initialLabels)
+			}
+
+			clusterMeta := &service.ClusterMeta{
+				ClusterName: tt.inputClusterName,
+			}
+			metric := &service.ClusterQuotaRecord{}
+
+			err := mw.RecordClusterQuota(context.Background(), clusterMeta, metric)
+			if err != nil {
+				t.Fatalf("RecordClusterQuota() returned an unexpected error: %v", err)
+			}
+
+			updatedLabels, _ := mw.Labels.Load(tt.inputClusterName)
+			if !assertEqual(updatedLabels.([]attribute.KeyValue), tt.expectedLabelsAfter) {
+				t.Errorf("Expected labels %v, got %v", tt.expectedLabelsAfter, updatedLabels)
 			}
 		})
 	}
