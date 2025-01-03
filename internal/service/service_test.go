@@ -78,12 +78,12 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 	quotaFile1 := "testdata/recordings/client1-quotas.json"
 	contentBytes1, _ := os.ReadFile(quotaFile1)
 	var client1MockQuotaList goisilon.QuotaList
-	json.Unmarshal(contentBytes1, &client1MockQuotaList)
+	_ = json.Unmarshal(contentBytes1, &client1MockQuotaList)
 
 	quotaFile2 := "testdata/recordings/client2-quotas.json"
 	contentBytes2, _ := os.ReadFile(quotaFile2)
 	var client2MockQuotaList goisilon.QuotaList
-	json.Unmarshal(contentBytes2, &client2MockQuotaList)
+	_ = json.Unmarshal(contentBytes2, &client2MockQuotaList)
 
 	tests := map[string]func(t *testing.T) (service.PowerScaleService, *gomock.Controller){
 		"success": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
@@ -444,7 +444,7 @@ func Test_ExportClusterMetrics(t *testing.T) {
 			file := "testdata/recordings/platform-3-statistics-current.json"
 			contentBytes, _ := os.ReadFile(file)
 			var stats goisilon.FloatStats
-			json.Unmarshal(contentBytes, &stats)
+			_ = json.Unmarshal(contentBytes, &stats)
 
 			clients := make(map[string]service.PowerScaleClient)
 			c := mocks.NewMockPowerScaleClient(ctrl)
