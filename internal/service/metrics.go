@@ -296,7 +296,8 @@ func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(ctx context.Context,
 		return nil
 	},
 		metrics.TotalCapacity,
-		metrics.RemainingCapacity)
+		metrics.RemainingCapacity,
+		metrics.UsedPercentage)
 	return nil
 }
 
