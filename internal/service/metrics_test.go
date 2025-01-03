@@ -21,8 +21,15 @@ import (
 	"testing"
 
 	"github.com/dell/csm-metrics-powerscale/internal/service"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel"
+)
+
+const (
+	TestLabelClusterName = "ClusterName"
+	TestLabelPlotWithMean = "PlotWithMean"
+	TestPlotWithMeanNo = "No"
+	TestCluster1 = "cluster-1"
 )
 
 func TestMetricsWrapper_RecordClusterQuota(t *testing.T) {
@@ -31,12 +38,12 @@ func TestMetricsWrapper_RecordClusterQuota(t *testing.T) {
 	}
 	clusterMetas := []interface{}{
 		&service.ClusterMeta{
-			ClusterName: "cluster-1",
+			ClusterName: TestCluster1,
 		},
 	}
 	volumeMetas := []interface{}{
 		&service.VolumeMeta{
-			ClusterName: "cluster-1",
+			ClusterName: TestCluster1,
 		},
 	}
 	clusterQuotaRecordMetric := &service.ClusterQuotaRecord{}
@@ -87,13 +94,13 @@ func TestMetricsWrapper_RecordVolumeQuota(t *testing.T) {
 	}
 	clusterMetas := []interface{}{
 		&service.ClusterMeta{
-			ClusterName: "cluster-1",
+			ClusterName: TestCluster1,
 		},
 	}
 	volumeMetas := []interface{}{
 		&service.VolumeMeta{
 			ID:          "123",
-			ClusterName: "cluster-1",
+			ClusterName: TestCluster1,
 		},
 	}
 	VolumeQuotaMetricsRecordMetric := &service.VolumeQuotaMetricsRecord{}
@@ -147,7 +154,7 @@ func TestMetricsWrapper_RecordClusterCapacityStatsMetrics(t *testing.T) {
 		metric *service.ClusterCapacityStatsMetricsRecord
 	}
 	ClusterCapacityStatsMetricsRecordMetric := &service.ClusterCapacityStatsMetricsRecord{
-		ClusterName:       "cluster-1",
+		ClusterName:       TestCluster1,
 		TotalCapacity:     173344948224,
 		RemainingCapacity: 171467464704,
 		UsedPercentage:    1.08,
@@ -186,7 +193,7 @@ func TestMetricsWrapper_RecordClusterPerformanceStatsMetrics(t *testing.T) {
 		metric *service.ClusterPerformanceStatsMetricsRecord
 	}
 	ClusterPerformanceStatsMetricsRecordMetric := &service.ClusterPerformanceStatsMetricsRecord{
-		ClusterName:             "cluster-1",
+		ClusterName:             TestCluster1,
 		CPUPercentage:           58,
 		DiskReadOperationsRate:  0.3666666666666667,
 		DiskWriteOperationsRate: 0.3666666666666667,
@@ -218,6 +225,7 @@ func TestMetricsWrapper_RecordClusterPerformanceStatsMetrics(t *testing.T) {
 	}
 }
 
+
 func assertEqual(a, b []attribute.KeyValue) bool {
 	if len(a) != len(b) {
 		return false
@@ -230,108 +238,110 @@ func assertEqual(a, b []attribute.KeyValue) bool {
 	return true
 }
 
+
 func TestMetricsWrapper_RecordClusterQuota_UpdateLabels(t *testing.T) {
+   
 	mw := &service.MetricsWrapper{
-		Meter: otel.Meter("powerscale-test"),
-	}
+        Meter: otel.Meter("powerscale-test"),
+    }
 
-	tests := []struct {
-		name                string
-		initialMetaID       string
-		initialLabels       []attribute.KeyValue
-		inputClusterName    string
-		inputLabels         []attribute.KeyValue
-		expectLabelChange   bool
-		expectedLabelsAfter []attribute.KeyValue
-	}{
-		{
-			name:             "MetaID does not exist",
-			initialMetaID:    "",
-			initialLabels:    nil,
-			inputClusterName: "cluster-1",
-			inputLabels: []attribute.KeyValue{
-				attribute.String("ClusterName", "cluster-1"),
-				attribute.String("PlotWithMean", "No"),
-			},
-			expectLabelChange: true,
-			expectedLabelsAfter: []attribute.KeyValue{
-				attribute.String("ClusterName", "cluster-1"),
-				attribute.String("PlotWithMean", "No"),
-			},
-		},
-		{
-			name:             "MetaID exists but labels missing",
-			initialMetaID:    "cluster-1",
-			initialLabels:    nil,
-			inputClusterName: "cluster-1",
-			inputLabels: []attribute.KeyValue{
-				attribute.String("ClusterName", "cluster-1"),
-				attribute.String("PlotWithMean", "No"),
-			},
-			expectLabelChange: true,
-			expectedLabelsAfter: []attribute.KeyValue{
-				attribute.String("ClusterName", "cluster-1"),
-				attribute.String("PlotWithMean", "No"),
-			},
-		},
-		{
-			name:          "MetaID exists with mismatched labels",
-			initialMetaID: "cluster-1",
-			initialLabels: []attribute.KeyValue{
-				attribute.String("ClusterName", "cluster-1"),
-				attribute.String("PlotWithMean", "Yes"),
-			},
-			inputClusterName: "cluster-1",
-			inputLabels: []attribute.KeyValue{
-				attribute.String("ClusterName", "cluster-1"),
-				attribute.String("PlotWithMean", "No"),
-			},
-			expectLabelChange: true,
-			expectedLabelsAfter: []attribute.KeyValue{
-				attribute.String("ClusterName", "cluster-1"),
-				attribute.String("PlotWithMean", "No"),
-			},
-		},
-		{
-			name:          "MetaID exists with matching labels",
-			initialMetaID: "cluster-1",
-			initialLabels: []attribute.KeyValue{
-				attribute.String("ClusterName", "cluster-1"),
-				attribute.String("PlotWithMean", "No"),
-			},
-			inputClusterName: "cluster-1",
-			inputLabels: []attribute.KeyValue{
-				attribute.String("ClusterName", "cluster-1"),
-				attribute.String("PlotWithMean", "No"),
-			},
-			expectLabelChange: false,
-			expectedLabelsAfter: []attribute.KeyValue{
-				attribute.String("ClusterName", "cluster-1"),
-				attribute.String("PlotWithMean", "No"),
-			},
-		},
-	}
+    tests := []struct {
+        name                string
+        initialMetaID       string
+        initialLabels       []attribute.KeyValue
+        inputClusterName    string
+        inputLabels         []attribute.KeyValue
+        expectLabelChange   bool
+        expectedLabelsAfter []attribute.KeyValue
+    }{
+        {
+            name:             "MetaID does not exist",
+            initialMetaID:    "",
+            initialLabels:    nil,
+            inputClusterName: TestCluster1,
+            inputLabels: []attribute.KeyValue{
+                attribute.String(TestLabelClusterName, TestCluster1),
+                attribute.String(TestLabelPlotWithMean, TestPlotWithMeanNo),
+            },
+            expectLabelChange: true,
+            expectedLabelsAfter: []attribute.KeyValue{
+                attribute.String(TestLabelClusterName, TestCluster1),
+                attribute.String(TestLabelPlotWithMean, TestPlotWithMeanNo),
+            },
+        },
+        {
+            name:             "MetaID exists but labels missing",
+            initialMetaID:    TestCluster1,
+            initialLabels:    nil,
+            inputClusterName: TestCluster1,
+            inputLabels: []attribute.KeyValue{
+                attribute.String(TestLabelClusterName, TestCluster1),
+                attribute.String(TestLabelPlotWithMean, TestPlotWithMeanNo),
+            },
+            expectLabelChange: true,
+            expectedLabelsAfter: []attribute.KeyValue{
+                attribute.String(TestLabelClusterName, TestCluster1),
+                attribute.String(TestLabelPlotWithMean, TestPlotWithMeanNo),
+            },
+        },
+        {
+            name:             "MetaID exists with mismatched labels",
+            initialMetaID:    TestCluster1,
+            initialLabels: []attribute.KeyValue{
+                attribute.String(TestLabelClusterName, TestCluster1),
+                attribute.String(TestLabelPlotWithMean, "Yes"),
+            },
+            inputClusterName: TestCluster1,
+            inputLabels: []attribute.KeyValue{
+                attribute.String(TestLabelClusterName, TestCluster1),
+                attribute.String(TestLabelPlotWithMean, TestPlotWithMeanNo),
+            },
+            expectLabelChange: true,
+            expectedLabelsAfter: []attribute.KeyValue{
+                attribute.String(TestLabelClusterName, TestCluster1),
+                attribute.String(TestLabelPlotWithMean, TestPlotWithMeanNo),
+            },
+        },
+        {
+            name:             "MetaID exists with matching labels",
+            initialMetaID:    TestCluster1,
+            initialLabels: []attribute.KeyValue{
+                attribute.String(TestLabelClusterName,TestCluster1),
+                attribute.String(TestLabelPlotWithMean, TestPlotWithMeanNo),
+            },
+            inputClusterName: TestCluster1,
+            inputLabels: []attribute.KeyValue{
+                attribute.String(TestLabelClusterName, TestCluster1),
+                attribute.String(TestLabelPlotWithMean, TestPlotWithMeanNo),
+            },
+            expectLabelChange: false,
+            expectedLabelsAfter: []attribute.KeyValue{
+                attribute.String(TestLabelClusterName, TestCluster1),
+                attribute.String(TestLabelPlotWithMean, TestPlotWithMeanNo),
+            },
+        },
+    }
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.initialLabels != nil {
-				mw.Labels.Store(tt.initialMetaID, tt.initialLabels)
-			}
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            if tt.initialLabels != nil {
+                mw.Labels.Store(tt.initialMetaID, tt.initialLabels)
+            }
 
-			clusterMeta := &service.ClusterMeta{
-				ClusterName: tt.inputClusterName,
-			}
-			metric := &service.ClusterQuotaRecord{}
+            clusterMeta := &service.ClusterMeta{
+                ClusterName: tt.inputClusterName,
+            }
+            metric := &service.ClusterQuotaRecord{}
 
-			err := mw.RecordClusterQuota(context.Background(), clusterMeta, metric)
-			if err != nil {
-				t.Fatalf("RecordClusterQuota() returned an unexpected error: %v", err)
-			}
+            err := mw.RecordClusterQuota(context.Background(), clusterMeta, metric)
+            if err != nil {
+                t.Fatalf("RecordClusterQuota() returned an unexpected error: %v", err)
+            }
 
-			updatedLabels, _ := mw.Labels.Load(tt.inputClusterName)
-			if !assertEqual(updatedLabels.([]attribute.KeyValue), tt.expectedLabelsAfter) {
-				t.Errorf("Expected labels %v, got %v", tt.expectedLabelsAfter, updatedLabels)
-			}
-		})
-	}
+            updatedLabels, _ := mw.Labels.Load(tt.inputClusterName)
+            if !assertEqual(updatedLabels.([]attribute.KeyValue), tt.expectedLabelsAfter) {
+                t.Errorf("Expected labels %v, got %v", tt.expectedLabelsAfter, updatedLabels)
+            }
+        })
+    }
 }

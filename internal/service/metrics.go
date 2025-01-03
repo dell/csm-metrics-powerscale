@@ -138,15 +138,10 @@ func updateLabels(prefix, metaID string, labels []attribute.KeyValue, mw *Metric
 }
 
 func (mw *MetricsWrapper) initClusterQuotaMetrics(prefix, metaID string, labels []attribute.KeyValue) (*ClusterQuotaMetrics, error) {
-	totalHardQuota, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "total_hard_quota_gigabytes")
-	if err != nil {
-		return nil, err
-	}
-	TotalHardQuotaPct, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "total_hard_quota_percentage")
-	if err != nil {
-		return nil, err
-	}
-
+	totalHardQuota, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "total_hard_quota_gigabytes")
+	
+	TotalHardQuotaPct, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "total_hard_quota_percentage")
+	
 	metrics := &ClusterQuotaMetrics{
 		TotalHardQuotaGigabytes: totalHardQuota,
 		TotalHardQuotaPct:       TotalHardQuotaPct,
@@ -159,7 +154,7 @@ func (mw *MetricsWrapper) initClusterQuotaMetrics(prefix, metaID string, labels 
 }
 
 // RecordClusterQuota will publish cluster Quota metrics data
-func (mw *MetricsWrapper) RecordClusterQuota(_ context.Context, meta interface{}, metric *ClusterQuotaRecord) error {
+func (mw *MetricsWrapper) RecordClusterQuota(ctx context.Context, meta interface{}, metric *ClusterQuotaRecord) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -200,22 +195,14 @@ func (mw *MetricsWrapper) RecordClusterQuota(_ context.Context, meta interface{}
 }
 
 func (mw *MetricsWrapper) initVolumeQuotaMetrics(prefix, metaID string, labels []attribute.KeyValue) (*VolumeQuotaMetrics, error) {
-	quotaSubscribed, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "quota_subscribed_gigabytes")
-	if err != nil {
-		return nil, err
-	}
-	hardQuotaRemaining, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_gigabytes")
-	if err != nil {
-		return nil, err
-	}
-	quotaSubscribedPct, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "quota_subscribed_percentage")
-	if err != nil {
-		return nil, err
-	}
-	hardQuotaRemainingPct, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_percentage")
-	if err != nil {
-		return nil, err
-	}
+	quotaSubscribed, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "quota_subscribed_gigabytes")
+	
+	hardQuotaRemaining, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_gigabytes")
+	
+	quotaSubscribedPct, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "quota_subscribed_percentage")
+
+	hardQuotaRemainingPct, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_percentage")
+	
 
 	metrics := &VolumeQuotaMetrics{
 		QuotaSubscribed:       quotaSubscribed,
@@ -231,7 +218,7 @@ func (mw *MetricsWrapper) initVolumeQuotaMetrics(prefix, metaID string, labels [
 }
 
 // RecordVolumeQuota will publish volume Quota metrics data
-func (mw *MetricsWrapper) RecordVolumeQuota(_ context.Context, meta interface{}, metric *VolumeQuotaMetricsRecord) error {
+func (mw *MetricsWrapper) RecordVolumeQuota(ctx context.Context, meta interface{}, metric *VolumeQuotaMetricsRecord) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -281,7 +268,7 @@ func (mw *MetricsWrapper) RecordVolumeQuota(_ context.Context, meta interface{},
 }
 
 // RecordClusterCapacityStatsMetrics will publish cluster capacity stats metrics
-func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(_ context.Context, metric *ClusterCapacityStatsMetricsRecord) error {
+func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(ctx context.Context, metric *ClusterCapacityStatsMetricsRecord) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -316,13 +303,12 @@ func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(_ context.Context, m
 		return nil
 	},
 		metrics.TotalCapacity,
-		metrics.RemainingCapacity,
-		metrics.UsedPercentage)
+		metrics.RemainingCapacity)
 	return nil
 }
 
 // RecordClusterPerformanceStatsMetrics will publish cluster performance stats metrics
-func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(_ context.Context, metric *ClusterPerformanceStatsMetricsRecord) error {
+func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(ctx context.Context, metric *ClusterPerformanceStatsMetricsRecord) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -365,18 +351,12 @@ func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(_ context.Context
 }
 
 func (mw *MetricsWrapper) initClusterCapacityStatsMetrics(prefix string, id string, labels []attribute.KeyValue) (*ClusterCapacityStatsMetrics, error) {
-	totalCapacity, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "total_capacity_terabytes")
-	if err != nil {
-		return nil, err
-	}
-	remainingCapacity, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "remaining_capacity_terabytes")
-	if err != nil {
-		return nil, err
-	}
-	usedPercentage, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "used_capacity_percentage")
-	if err != nil {
-		return nil, err
-	}
+	totalCapacity, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "total_capacity_terabytes")
+	
+	remainingCapacity, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "remaining_capacity_terabytes")
+
+	usedPercentage, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "used_capacity_percentage")
+	
 
 	metrics := &ClusterCapacityStatsMetrics{
 		TotalCapacity:     totalCapacity,
@@ -391,26 +371,16 @@ func (mw *MetricsWrapper) initClusterCapacityStatsMetrics(prefix string, id stri
 }
 
 func (mw *MetricsWrapper) initClusterPerformanceStatsMetrics(prefix string, id string, labels []attribute.KeyValue) (*ClusterPerformanceStatsMetrics, error) {
-	cpuPercentage, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "cpu_use_rate")
-	if err != nil {
-		return nil, err
-	}
-	diskReadOperationsRate, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_read_operation_rate")
-	if err != nil {
-		return nil, err
-	}
-	diskWriteOperationsRate, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_write_operation_rate")
-	if err != nil {
-		return nil, err
-	}
-	diskReadThroughput, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_throughput_read_rate_megabytes_per_second")
-	if err != nil {
-		return nil, err
-	}
-	diskWriteThroughput, err := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_throughput_write_rate_megabytes_per_second")
-	if err != nil {
-		return nil, err
-	}
+	cpuPercentage, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "cpu_use_rate")
+
+	diskReadOperationsRate, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_read_operation_rate")
+
+	diskWriteOperationsRate, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_write_operation_rate")
+	
+	diskReadThroughput, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_throughput_read_rate_megabytes_per_second")
+	
+	diskWriteThroughput, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "disk_throughput_write_rate_megabytes_per_second")
+	
 
 	metrics := &ClusterPerformanceStatsMetrics{
 		CPUPercentage:           cpuPercentage,
