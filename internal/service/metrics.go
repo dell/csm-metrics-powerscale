@@ -148,7 +148,7 @@ func (mw *MetricsWrapper) initClusterQuotaMetrics(prefix, metaID string, labels 
 }
 
 // RecordClusterQuota will publish cluster Quota metrics data
-func (mw *MetricsWrapper) RecordClusterQuota(ctx context.Context, meta interface{}, metric *ClusterQuotaRecord) error {
+func (mw *MetricsWrapper) RecordClusterQuota(_ context.Context, meta interface{}, metric *ClusterQuotaRecord) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -177,7 +177,7 @@ func (mw *MetricsWrapper) RecordClusterQuota(ctx context.Context, meta interface
 	}
 
 	metrics := metricsMapValue.(*ClusterQuotaMetrics)
-	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs otelMetric.Observer) error {
+	_, _ = mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
 		obs.ObserveFloat64(metrics.TotalHardQuotaGigabytes, utils.UnitsConvert(metric.totalHardQuota, utils.BYTES, utils.GB), otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.TotalHardQuotaPct, metric.totalHardQuotaPct, otelMetric.WithAttributes(labels...))
 		return nil
@@ -211,7 +211,7 @@ func (mw *MetricsWrapper) initVolumeQuotaMetrics(prefix, metaID string, labels [
 }
 
 // RecordVolumeQuota will publish volume Quota metrics data
-func (mw *MetricsWrapper) RecordVolumeQuota(ctx context.Context, meta interface{}, metric *VolumeQuotaMetricsRecord) error {
+func (mw *MetricsWrapper) RecordVolumeQuota(_ context.Context, meta interface{}, metric *VolumeQuotaMetricsRecord) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -246,7 +246,7 @@ func (mw *MetricsWrapper) RecordVolumeQuota(ctx context.Context, meta interface{
 	}
 
 	metrics := metricsMapValue.(*VolumeQuotaMetrics)
-	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs otelMetric.Observer) error {
+	_, _ = mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
 		obs.ObserveFloat64(metrics.QuotaSubscribed, utils.UnitsConvert(metric.quotaSubscribed, utils.BYTES, utils.GB), otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.HardQuotaRemaining, utils.UnitsConvert(metric.hardQuotaRemaining, utils.BYTES, utils.GB), otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.QuotaSubscribedPct, metric.quotaSubscribedPct, otelMetric.WithAttributes(labels...))
@@ -261,7 +261,7 @@ func (mw *MetricsWrapper) RecordVolumeQuota(ctx context.Context, meta interface{
 }
 
 // RecordClusterCapacityStatsMetrics will publish cluster capacity stats metrics
-func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(ctx context.Context, metric *ClusterCapacityStatsMetricsRecord) error {
+func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(_ context.Context, metric *ClusterCapacityStatsMetricsRecord) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -286,7 +286,7 @@ func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(ctx context.Context,
 	}
 
 	metrics := metricsMapValue.(*ClusterCapacityStatsMetrics)
-	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs otelMetric.Observer) error {
+	_, _ = mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
 		obs.ObserveFloat64(metrics.TotalCapacity, utils.UnitsConvert(metric.TotalCapacity, utils.BYTES, utils.TB), otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.RemainingCapacity, utils.UnitsConvert(metric.RemainingCapacity, utils.BYTES, utils.TB), otelMetric.WithAttributes(labels...))
 
@@ -302,7 +302,7 @@ func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(ctx context.Context,
 }
 
 // RecordClusterPerformanceStatsMetrics will publish cluster performance stats metrics
-func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(ctx context.Context, metric *ClusterPerformanceStatsMetricsRecord) error {
+func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(_ context.Context, metric *ClusterPerformanceStatsMetricsRecord) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -327,7 +327,7 @@ func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(ctx context.Conte
 	}
 
 	metrics := metricsMapValue.(*ClusterPerformanceStatsMetrics)
-	_, _ = mw.Meter.RegisterCallback(func(ctx context.Context, obs otelMetric.Observer) error {
+	_, _ = mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
 		obs.ObserveFloat64(metrics.CPUPercentage, metric.CPUPercentage/10, otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.DiskReadOperationsRate, metric.DiskReadOperationsRate, otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.DiskWriteOperationsRate, metric.DiskWriteOperationsRate, otelMetric.WithAttributes(labels...))
