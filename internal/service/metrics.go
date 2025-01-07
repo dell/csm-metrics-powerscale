@@ -313,20 +313,37 @@ func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(_ context.Context, m
 		return err
 	}
 
+	totalCapacityInitial := utils.UnitsConvert(metric.TotalCapacity, utils.BYTES, utils.TB)
+	remainingCapacity := utils.UnitsConvert(metric.RemainingCapacity, utils.BYTES, utils.TB)
+	totalCapacityFinal := 100 * (metric.TotalCapacity - metric.RemainingCapacity) / metric.TotalCapacity
+
 	metrics := metricsMapValue.(*ClusterCapacityStatsMetrics)
 
-	_, _ = mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
-		obs.ObserveFloat64(metrics.TotalCapacity, utils.UnitsConvert(metric.TotalCapacity, utils.BYTES, utils.TB), otelMetric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.RemainingCapacity, utils.UnitsConvert(metric.RemainingCapacity, utils.BYTES, utils.TB), otelMetric.WithAttributes(labels...))
+	done := make(chan struct{})
+	reg, err := mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
+		obs.ObserveFloat64(metrics.TotalCapacity, totalCapacityInitial, otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.RemainingCapacity, remainingCapacity, otelMetric.WithAttributes(labels...))
 
 		if metric.TotalCapacity != 0 {
-			obs.ObserveFloat64(metrics.UsedPercentage, 100*(metric.TotalCapacity-metric.RemainingCapacity)/metric.TotalCapacity, otelMetric.WithAttributes(labels...))
+			obs.ObserveFloat64(metrics.UsedPercentage, totalCapacityFinal, otelMetric.WithAttributes(labels...))
 		}
+
+		go func() {
+			done <- struct{}{}
+		}()
 		return nil
 	},
 		metrics.TotalCapacity,
 		metrics.RemainingCapacity,
 		metrics.UsedPercentage)
+
+	if err != nil {
+		return err
+	}
+
+	<-done
+	_ = reg.Unregister()
+
 	return nil
 }
 
@@ -355,13 +372,24 @@ func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(_ context.Context
 		return err
 	}
 
+	cpuPercentage := metric.CPUPercentage / 10
+	diskReadThroughputRate := utils.UnitsConvert(metric.DiskReadThroughputRate, utils.BYTES, utils.MB)
+	diskWriteThroughputRate := utils.UnitsConvert(metric.DiskWriteThroughputRate, utils.BYTES, utils.MB)
+
 	metrics := metricsMapValue.(*ClusterPerformanceStatsMetrics)
-	_, _ = mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
-		obs.ObserveFloat64(metrics.CPUPercentage, metric.CPUPercentage/10, otelMetric.WithAttributes(labels...))
+
+	done := make(chan struct{})
+	reg, err := mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
+		obs.ObserveFloat64(metrics.CPUPercentage, cpuPercentage, otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.DiskReadOperationsRate, metric.DiskReadOperationsRate, otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.DiskWriteOperationsRate, metric.DiskWriteOperationsRate, otelMetric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.DiskReadThroughputRate, utils.UnitsConvert(metric.DiskReadThroughputRate, utils.BYTES, utils.MB), otelMetric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.DiskWriteThroughputRate, utils.UnitsConvert(metric.DiskWriteThroughputRate, utils.BYTES, utils.MB), otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.DiskReadThroughputRate, diskReadThroughputRate, otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.DiskWriteThroughputRate, diskWriteThroughputRate, otelMetric.WithAttributes(labels...))
+
+		go func() {
+			done <- struct{}{}
+		}()
+
 		return nil
 	},
 		metrics.CPUPercentage,
@@ -369,6 +397,13 @@ func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(_ context.Context
 		metrics.DiskWriteOperationsRate,
 		metrics.DiskReadThroughputRate,
 		metrics.DiskWriteThroughputRate)
+
+	if err != nil {
+		return err
+	}
+
+	<-done
+	_ = reg.Unregister()
 
 	return nil
 }
