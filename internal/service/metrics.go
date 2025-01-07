@@ -128,6 +128,10 @@ func updateLabels(prefix, metaID string, labels []attribute.KeyValue, mw *Metric
 			}
 		}
 	}
+
+	done := make(chan struct{})
+	defer close(done)
+
 	return metricsMapValue, nil
 }
 
@@ -336,7 +340,6 @@ func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(_ context.Context, m
 		metrics.TotalCapacity,
 		metrics.RemainingCapacity,
 		metrics.UsedPercentage)
-
 	if err != nil {
 		return err
 	}
@@ -397,7 +400,6 @@ func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(_ context.Context
 		metrics.DiskWriteOperationsRate,
 		metrics.DiskReadThroughputRate,
 		metrics.DiskWriteThroughputRate)
-
 	if err != nil {
 		return err
 	}
