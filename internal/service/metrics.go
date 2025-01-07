@@ -176,14 +176,26 @@ func (mw *MetricsWrapper) RecordClusterQuota(_ context.Context, meta interface{}
 		return err
 	}
 
+	hardQuotaGigabytes := utils.UnitsConvert(metric.totalHardQuota, utils.BYTES, utils.GB)
+
 	metrics := metricsMapValue.(*ClusterQuotaMetrics)
-	_, _ = mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
-		obs.ObserveFloat64(metrics.TotalHardQuotaGigabytes, utils.UnitsConvert(metric.totalHardQuota, utils.BYTES, utils.GB), otelMetric.WithAttributes(labels...))
+	done := make(chan struct{})
+	reg, err := mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
+		obs.ObserveFloat64(metrics.TotalHardQuotaGigabytes, hardQuotaGigabytes, otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.TotalHardQuotaPct, metric.totalHardQuotaPct, otelMetric.WithAttributes(labels...))
+		go func() {
+			done <- struct{}{}
+		}()
 		return nil
 	},
 		metrics.TotalHardQuotaGigabytes,
 		metrics.TotalHardQuotaPct)
+	if err != nil {
+		return err
+	}
+
+	<-done
+	_ = reg.Unregister()
 
 	return nil
 }
@@ -215,6 +227,7 @@ func (mw *MetricsWrapper) RecordVolumeQuota(_ context.Context, meta interface{},
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
+
 	switch v := meta.(type) {
 	case *VolumeMeta:
 		prefix, metaID = "powerscale_volume_", v.ID
@@ -245,18 +258,33 @@ func (mw *MetricsWrapper) RecordVolumeQuota(_ context.Context, meta interface{},
 		return err
 	}
 
+	quotaSub := utils.UnitsConvert(metric.quotaSubscribed, utils.BYTES, utils.GB)
+	hardQuotaRemSub := utils.UnitsConvert(metric.hardQuotaRemaining, utils.BYTES, utils.GB)
+
 	metrics := metricsMapValue.(*VolumeQuotaMetrics)
-	_, _ = mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
-		obs.ObserveFloat64(metrics.QuotaSubscribed, utils.UnitsConvert(metric.quotaSubscribed, utils.BYTES, utils.GB), otelMetric.WithAttributes(labels...))
-		obs.ObserveFloat64(metrics.HardQuotaRemaining, utils.UnitsConvert(metric.hardQuotaRemaining, utils.BYTES, utils.GB), otelMetric.WithAttributes(labels...))
+
+	done := make(chan struct{})
+	reg, err := mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
+		obs.ObserveFloat64(metrics.QuotaSubscribed, quotaSub, otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.HardQuotaRemaining, hardQuotaRemSub, otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.QuotaSubscribedPct, metric.quotaSubscribedPct, otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.HardQuotaRemainingPct, metric.hardQuotaRemainingPct, otelMetric.WithAttributes(labels...))
+		go func() {
+			done <- struct{}{}
+		}()
 		return nil
 	},
 		metrics.QuotaSubscribed,
 		metrics.HardQuotaRemaining,
 		metrics.QuotaSubscribedPct,
 		metrics.HardQuotaRemainingPct)
+	if err != nil {
+		return err
+	}
+
+	<-done
+	_ = reg.Unregister()
+
 	return nil
 }
 
@@ -286,6 +314,7 @@ func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(_ context.Context, m
 	}
 
 	metrics := metricsMapValue.(*ClusterCapacityStatsMetrics)
+
 	_, _ = mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
 		obs.ObserveFloat64(metrics.TotalCapacity, utils.UnitsConvert(metric.TotalCapacity, utils.BYTES, utils.TB), otelMetric.WithAttributes(labels...))
 		obs.ObserveFloat64(metrics.RemainingCapacity, utils.UnitsConvert(metric.RemainingCapacity, utils.BYTES, utils.TB), otelMetric.WithAttributes(labels...))
