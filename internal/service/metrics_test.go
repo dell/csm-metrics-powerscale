@@ -18,6 +18,9 @@ package service_test
 
 import (
 	"context"
+	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
+
+	//"go.opentelemetry.io/otel/metric/global"
 	"testing"
 
 	"github.com/dell/csm-metrics-powerscale/internal/service"
@@ -45,6 +48,11 @@ func TestMetricsWrapper_RecordClusterQuota(t *testing.T) {
 		&service.VolumeMeta{
 			ClusterName: TestCluster1,
 		},
+	}
+	exporter := &otlexporters.OtlCollectorExporter{}
+	err := exporter.InitExporter()
+	if err != nil {
+		t.Fatal(err)
 	}
 	clusterQuotaRecordMetric := &service.ClusterQuotaRecord{}
 	type args struct {
@@ -103,6 +111,12 @@ func TestMetricsWrapper_RecordVolumeQuota(t *testing.T) {
 			ClusterName: TestCluster1,
 		},
 	}
+	exporter := &otlexporters.OtlCollectorExporter{}
+	err := exporter.InitExporter()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	VolumeQuotaMetricsRecordMetric := &service.VolumeQuotaMetricsRecord{}
 	type args struct {
 		ctx    context.Context
@@ -200,6 +214,12 @@ func TestMetricsWrapper_RecordClusterPerformanceStatsMetrics(t *testing.T) {
 		DiskReadThroughputRate:  187.7333333333333,
 		DiskWriteThroughputRate: 187.7333333333333,
 	}
+	exporter := &otlexporters.OtlCollectorExporter{}
+	err := exporter.InitExporter()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
 		name    string
 		mw      *service.MetricsWrapper
@@ -240,6 +260,12 @@ func assertEqual(a, b []attribute.KeyValue) bool {
 func TestMetricsWrapper_RecordClusterQuota_UpdateLabels(t *testing.T) {
 	mw := &service.MetricsWrapper{
 		Meter: otel.Meter("powerscale-test"),
+	}
+
+	exporter := &otlexporters.OtlCollectorExporter{}
+	err := exporter.InitExporter()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	tests := []struct {
