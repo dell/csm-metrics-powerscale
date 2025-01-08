@@ -20,19 +20,16 @@ import (
 	"context"
 	"time"
 
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
-	"go.opentelemetry.io/otel/metric/global"
-	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
-	"go.opentelemetry.io/otel/sdk/metric/processor/basic"
-	"go.opentelemetry.io/otel/sdk/metric/selector/simple"
+	"go.opentelemetry.io/otel/sdk/metric"
 )
 
 // OtlCollectorExporter is the exporter for the OpenTelemetry Collector
 type OtlCollectorExporter struct {
 	CollectorAddr string
-	exporter      *otlpmetric.Exporter
-	controller    *controller.Controller
+	exporter      *otlpmetricgrpc.Exporter
+	meterProvider *metric.MeterProvider
 }
 
 const (
@@ -42,12 +39,12 @@ const (
 
 // InitExporter is the initialization method for the OpenTelemetry Collector exporter
 func (c *OtlCollectorExporter) InitExporter(opts ...otlpmetricgrpc.Option) error {
-	exporter, controller, err := c.initOTLPExporter(opts...)
+	exporter, meterProvider, err := c.initOTLPExporter(opts...)
 	if err != nil {
 		return err
 	}
 	c.exporter = exporter
-	c.controller = controller
+	c.meterProvider = meterProvider
 
 	return err
 }
@@ -59,7 +56,7 @@ func (c *OtlCollectorExporter) StopExporter() error {
 		return err
 	}
 
-	err = c.controller.Stop(context.Background())
+	err = c.meterProvider.Shutdown(context.Background())
 	if err != nil {
 		return err
 	}
@@ -67,34 +64,15 @@ func (c *OtlCollectorExporter) StopExporter() error {
 	return nil
 }
 
-func (c *OtlCollectorExporter) initOTLPExporter(opts ...otlpmetricgrpc.Option) (*otlpmetric.Exporter, *controller.Controller, error) {
+func (c *OtlCollectorExporter) initOTLPExporter(opts ...otlpmetricgrpc.Option) (*otlpmetricgrpc.Exporter, *metric.MeterProvider, error) {
 	exporter, err := otlpmetricgrpc.New(context.Background(), opts...)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	processor := basic.New(
-		simple.NewWithHistogramDistribution(),
-		exporter,
-	)
+	meterProvider := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(exporter, metric.WithInterval(5*time.Second))))
 
-	f := basic.NewFactory(
-		processor.AggregatorSelector,
-		processor.TemporalitySelector,
-	)
+	otel.SetMeterProvider(meterProvider)
 
-	ctrl := controller.New(
-		f,
-		controller.WithExporter(exporter),
-		controller.WithCollectPeriod(5*time.Second),
-	)
-
-	err = ctrl.Start(context.Background())
-	if err != nil {
-		return nil, nil, err
-	}
-
-	global.SetMeterProvider(ctrl)
-
-	return exporter, ctrl, nil
+	return exporter, meterProvider, nil
 }

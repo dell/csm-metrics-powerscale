@@ -84,10 +84,7 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 		if cluster.ClusterName == "" {
 			return nil, nil, errors.New("no ClusterName field found in config.yaml, update config.yaml according to the documentation")
 		}
-
-		if strings.HasPrefix(cluster.Endpoint, "https://") {
-			cluster.Endpoint = strings.TrimPrefix(cluster.Endpoint, "https://")
-		}
+		cluster.Endpoint = strings.TrimPrefix(cluster.Endpoint, "https://")
 
 		if cluster.EndpointPort == "" {
 			logger.Warningf("endpoint port is empty, use default EndpointPort: %s", defaultEndpointPort)

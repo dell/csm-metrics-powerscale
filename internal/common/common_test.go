@@ -72,7 +72,7 @@ func Test_Run(t *testing.T) {
 
 			newContent := strings.Replace(string(fileContentBytes), "[serverip]", serverIP, 1)
 			newContent = strings.Replace(newContent, "[serverport]", serverPort, 1)
-			os.WriteFile(filePath, []byte(newContent), 0o600)
+			_ = os.WriteFile(filePath, []byte(newContent), 0o600)
 
 			clusters, defaultCluster, err := common.GetPowerScaleClusters(filePath, logger)
 
@@ -85,7 +85,7 @@ func Test_Run(t *testing.T) {
 				assert.NotNil(t, defaultCluster)
 				assert.Nil(t, err)
 			}
-			os.WriteFile(filePath, fileContentBytes, 0o600)
+			_ = os.WriteFile(filePath, fileContentBytes, 0o600)
 		})
 	}
 }
@@ -108,7 +108,7 @@ func getHandler() http.Handler {
 func getRouter() http.Handler {
 	isilonRouter := mux.NewRouter()
 	isilonRouter.HandleFunc("/platform/latest/", func(w http.ResponseWriter, _ *http.Request) {
-		w.Write([]byte("{\"latest\": \"14\"}"))
+		_, _ = w.Write([]byte("{\"latest\": \"14\"}"))
 	})
 	return isilonRouter
 }
