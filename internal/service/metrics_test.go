@@ -18,8 +18,9 @@ package service_test
 
 import (
 	"context"
-	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
 	"testing"
+
+	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
 
 	"github.com/dell/csm-metrics-powerscale/internal/service"
 	"go.opentelemetry.io/otel"
