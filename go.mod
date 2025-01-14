@@ -3,7 +3,7 @@ module github.com/dell/csm-metrics-powerscale
 go 1.23.0
 
 require (
-	github.com/dell/goisilon v1.18.0
+	github.com/dell/goisilon v1.18.1
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/golang/mock v1.6.0
 	github.com/gorilla/mux v1.8.1
@@ -14,7 +14,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.33.0
 	go.opentelemetry.io/otel/metric v1.33.0
 	go.opentelemetry.io/otel/sdk/metric v1.33.0
-	google.golang.org/grpc v1.69.2
+	google.golang.org/grpc v1.69.4
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.32.0
 	k8s.io/apimachinery v0.32.0
