@@ -2,6 +2,8 @@ module github.com/dell/csm-metrics-powerscale
 
 go 1.23.0
 
+toolchain go1.23.5
+
 require (
 	github.com/dell/goisilon v1.18.1
 	github.com/fsnotify/fsnotify v1.8.0
