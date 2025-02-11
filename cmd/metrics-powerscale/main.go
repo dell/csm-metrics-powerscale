@@ -174,7 +174,8 @@ func updatePowerScaleConnection(powerScaleSvc *service.PowerScaleService, storag
 func updateCollectorAddress(config *entrypoint.Config, exporter *otlexporters.OtlCollectorExporter, logger *logrus.Logger) {
 	collectorAddress := viper.GetString("COLLECTOR_ADDR")
 	if collectorAddress == "" {
-		logger.Fatal("COLLECTOR_ADDR is required")
+		logger.Error("COLLECTOR_ADDR is required")
+		return
 	}
 	config.CollectorAddress = collectorAddress
 	exporter.CollectorAddr = collectorAddress
@@ -184,7 +185,8 @@ func updateCollectorAddress(config *entrypoint.Config, exporter *otlexporters.Ot
 func updateProvisionerNames(volumeFinder *k8s.VolumeFinder, storageClassFinder *k8s.StorageClassFinder, logger *logrus.Logger) {
 	provisionerNamesValue := viper.GetString("provisioner_names")
 	if provisionerNamesValue == "" {
-		logger.Fatal("PROVISIONER_NAMES is required")
+		logger.Error("PROVISIONER_NAMES is required")
+		return
 	}
 	provisionerNames := strings.Split(provisionerNamesValue, ",")
 	volumeFinder.DriverNames = provisionerNames
