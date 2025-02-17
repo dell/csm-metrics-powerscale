@@ -24,18 +24,15 @@ import (
 	"strings"
 	"time"
 
-	"go.opentelemetry.io/otel"
-
 	"github.com/dell/csm-metrics-powerscale/internal/common"
 	"github.com/dell/csm-metrics-powerscale/internal/entrypoint"
-
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
 	"github.com/dell/csm-metrics-powerscale/internal/service"
 	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
-	"github.com/sirupsen/logrus"
-
 	"github.com/fsnotify/fsnotify"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/otel"
 )
 
 const (
@@ -45,101 +42,118 @@ const (
 )
 
 func main() {
+	logger := setupLogger()
+	loadConfig(logger)
+	configFileListener := setupConfigFileListener()
+	leaderElector := &k8s.LeaderElector{API: &k8s.LeaderElector{}}
+
+	config := setupConfig(logger, leaderElector)
+	exporter := &otlexporters.OtlCollectorExporter{}
+	powerScaleSvc := setupPowerScaleService(logger)
+
+	// Initial configuration updates
+	applyInitialConfigUpdates(config, exporter, powerScaleSvc, logger)
+
+	// Watch for config changes and update settings dynamically
+	setupConfigWatchers(configFileListener, config, exporter, powerScaleSvc, logger)
+
+	// Start the service
+	if err := entrypoint.Run(context.Background(), config, exporter, powerScaleSvc); err != nil {
+		logger.WithError(err).Fatal("running service")
+	}
+}
+
+// setupLogger initializes and configures the logger.
+func setupLogger() *logrus.Logger {
 	logger := logrus.New()
+	updateLoggingSettings(logger)
+	return logger
+}
 
+// loadConfig loads the primary configuration file.
+func loadConfig(logger *logrus.Logger) {
 	viper.SetConfigFile(defaultConfigFile)
-
-	err := viper.ReadInConfig()
-	// if unable to read configuration file, proceed in case we use environment variables
-	if err != nil {
+	if err := viper.ReadInConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "unable to read Config file: %v", err)
 	}
+}
 
+// setupConfigFileListener initializes a secondary config watcher for storage system configs.
+func setupConfigFileListener() *viper.Viper {
 	configFileListener := viper.New()
 	configFileListener.SetConfigFile(defaultStorageSystemConfigFile)
+	return configFileListener
+}
 
-	leaderElectorGetter := &k8s.LeaderElector{
-		API: &k8s.LeaderElector{},
-	}
-
-	updateLoggingSettings := func(logger *logrus.Logger) {
-		logFormat := viper.GetString("LOG_FORMAT")
-		if strings.EqualFold(logFormat, "json") {
-			logger.SetFormatter(&logrus.JSONFormatter{})
-		} else {
-			// use text formatter by default
-			logger.SetFormatter(&logrus.TextFormatter{})
-		}
-		logLevel := viper.GetString("LOG_LEVEL")
-		level, err := logrus.ParseLevel(logLevel)
-		if err != nil {
-			// use INFO level by default
-			level = logrus.InfoLevel
-		}
-		logger.SetLevel(level)
-	}
-
-	updateLoggingSettings(logger)
-
-	volumeFinder := &k8s.VolumeFinder{
-		API:    &k8s.API{},
-		Logger: logger,
-	}
-
-	storageClassFinder := &k8s.StorageClassFinder{
-		API:    &k8s.API{},
-		Logger: logger,
-	}
-
-	var collectorCertPath string
-	if tls := os.Getenv("TLS_ENABLED"); tls == "true" {
-		collectorCertPath = os.Getenv("COLLECTOR_CERT_PATH")
-		if len(strings.TrimSpace(collectorCertPath)) < 1 {
-			collectorCertPath = otlexporters.DefaultCollectorCertPath
-		}
-	}
-
-	config := &entrypoint.Config{
-		LeaderElector:     leaderElectorGetter,
-		CollectorCertPath: collectorCertPath,
+// setupConfig creates the main configuration structure.
+func setupConfig(logger *logrus.Logger, leaderElector *k8s.LeaderElector) *entrypoint.Config {
+	return &entrypoint.Config{
+		LeaderElector:     leaderElector,
+		CollectorCertPath: getCollectorCertPath(),
 		Logger:            logger,
 	}
+}
 
-	exporter := &otlexporters.OtlCollectorExporter{}
+// getCollectorCertPath retrieves the certificate path for the OpenTelemetry collector.
+func getCollectorCertPath() string {
+	if tls := os.Getenv("TLS_ENABLED"); tls == "true" {
+		if certPath := strings.TrimSpace(os.Getenv("COLLECTOR_CERT_PATH")); certPath != "" {
+			return certPath
+		}
+	}
+	return otlexporters.DefaultCollectorCertPath
+}
 
-	powerScaleSvc := &service.PowerScaleService{
+// setupPowerScaleService initializes the PowerScale service.
+func setupPowerScaleService(logger *logrus.Logger) *service.PowerScaleService {
+	return &service.PowerScaleService{
 		MetricsWrapper: &service.MetricsWrapper{
 			Meter: otel.Meter("powerscale"),
 		},
 		Logger:             logger,
-		VolumeFinder:       volumeFinder,
-		StorageClassFinder: storageClassFinder,
+		VolumeFinder:       &k8s.VolumeFinder{API: &k8s.API{}, Logger: logger},
+		StorageClassFinder: &k8s.StorageClassFinder{API: &k8s.API{}, Logger: logger},
 	}
+}
 
-	updatePowerScaleConnection(powerScaleSvc, storageClassFinder, volumeFinder, logger)
+// applyInitialConfigUpdates applies all necessary updates before starting the service.
+func applyInitialConfigUpdates(config *entrypoint.Config, exporter *otlexporters.OtlCollectorExporter, powerScaleSvc *service.PowerScaleService, logger *logrus.Logger) {
+	updateLoggingSettings(logger)
 	updateCollectorAddress(config, exporter, logger)
 	updateMetricsEnabled(config, logger)
 	updateTickIntervals(config, logger)
+	updatePowerScaleConnection(powerScaleSvc, powerScaleSvc.StorageClassFinder.(*k8s.StorageClassFinder), powerScaleSvc.VolumeFinder.(*k8s.VolumeFinder), logger)
 	updateService(powerScaleSvc, logger)
+}
 
+// setupConfigWatchers sets up dynamic updates when config files change.
+func setupConfigWatchers(configFileListener *viper.Viper, config *entrypoint.Config, exporter *otlexporters.OtlCollectorExporter, powerScaleSvc *service.PowerScaleService, logger *logrus.Logger) {
 	viper.WatchConfig()
 	viper.OnConfigChange(func(_ fsnotify.Event) {
-		updateLoggingSettings(logger)
-		updateCollectorAddress(config, exporter, logger)
-		updatePowerScaleConnection(powerScaleSvc, storageClassFinder, volumeFinder, logger)
-		updateMetricsEnabled(config, logger)
-		updateTickIntervals(config, logger)
-		updateService(powerScaleSvc, logger)
+		applyInitialConfigUpdates(config, exporter, powerScaleSvc, logger)
 	})
 
 	configFileListener.WatchConfig()
 	configFileListener.OnConfigChange(func(_ fsnotify.Event) {
-		updatePowerScaleConnection(powerScaleSvc, storageClassFinder, volumeFinder, logger)
+		updatePowerScaleConnection(powerScaleSvc, powerScaleSvc.StorageClassFinder.(*k8s.StorageClassFinder), powerScaleSvc.VolumeFinder.(*k8s.VolumeFinder), logger)
 	})
+}
 
-	if err := entrypoint.Run(context.Background(), config, exporter, powerScaleSvc); err != nil {
-		logger.WithError(err).Fatal("running service")
+// updateLoggingSettings updates logging format and level dynamically.
+func updateLoggingSettings(logger *logrus.Logger) {
+	logFormat := viper.GetString("LOG_FORMAT")
+	if strings.EqualFold(logFormat, "json") {
+		logger.SetFormatter(&logrus.JSONFormatter{})
+	} else {
+		logger.SetFormatter(&logrus.TextFormatter{})
 	}
+
+	logLevel := viper.GetString("LOG_LEVEL")
+	level, err := logrus.ParseLevel(logLevel)
+	if err != nil {
+		level = logrus.InfoLevel
+	}
+	logger.SetLevel(level)
 }
 
 func updatePowerScaleConnection(powerScaleSvc *service.PowerScaleService, storageClassFinder *k8s.StorageClassFinder, volumeFinder *k8s.VolumeFinder, logger *logrus.Logger) {
@@ -174,8 +188,7 @@ func updatePowerScaleConnection(powerScaleSvc *service.PowerScaleService, storag
 func updateCollectorAddress(config *entrypoint.Config, exporter *otlexporters.OtlCollectorExporter, logger *logrus.Logger) {
 	collectorAddress := viper.GetString("COLLECTOR_ADDR")
 	if collectorAddress == "" {
-		logger.Error("COLLECTOR_ADDR is required")
-		return
+		logger.Fatal("COLLECTOR_ADDR is required")
 	}
 	config.CollectorAddress = collectorAddress
 	exporter.CollectorAddr = collectorAddress
@@ -185,8 +198,7 @@ func updateCollectorAddress(config *entrypoint.Config, exporter *otlexporters.Ot
 func updateProvisionerNames(volumeFinder *k8s.VolumeFinder, storageClassFinder *k8s.StorageClassFinder, logger *logrus.Logger) {
 	provisionerNamesValue := viper.GetString("provisioner_names")
 	if provisionerNamesValue == "" {
-		logger.Error("PROVISIONER_NAMES is required")
-		return
+		logger.Fatal("PROVISIONER_NAMES is required")
 	}
 	provisionerNames := strings.Split(provisionerNamesValue, ",")
 	volumeFinder.DriverNames = provisionerNames
