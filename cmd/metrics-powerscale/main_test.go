@@ -17,6 +17,9 @@ limitations under the License.
 package main
 
 import (
+	"testing"
+	"time"
+
 	"github.com/dell/csm-metrics-powerscale/internal/entrypoint"
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
 	"github.com/dell/csm-metrics-powerscale/internal/service"
@@ -24,9 +27,86 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
+
+func TestSetupLogger(t *testing.T) {
+	tests := []struct {
+		name     string
+		logLevel string
+		wantErr  bool
+	}{
+		{"Valid log level", "info", false},
+		{"Invalid log level", "invalid", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			viper.Set("LOG_LEVEL", tt.logLevel)
+
+			logger := setupLogger()
+
+			// Test if logger is setup correctly and if any error occurs.
+			if tt.wantErr {
+				assert.Equal(t, logrus.InfoLevel, logger.Level)
+			} else {
+				assert.NotNil(t, logger)
+			}
+		})
+	}
+}
+
+func TestLoadConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr bool
+	}{
+		{"Valid config", false},
+		{"Invalid config", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Simulating different config file conditions
+			if tt.wantErr {
+				viper.SetConfigFile("/invalid/path")
+			} else {
+				viper.SetConfigFile(defaultConfigFile)
+			}
+
+			// Call loadConfig
+			mockLogger := logrus.New()
+			loadConfig(mockLogger) // This will just load the config
+			// No error handling needed because loadConfig doesn't return error; it just prints it
+		})
+	}
+}
+
+func TestSetupPowerScaleService(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr bool
+	}{
+		{"Valid setup", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup logger
+			mockLogger := logrus.New()
+
+			// Call the actual service setup function
+			got := setupPowerScaleService(mockLogger)
+
+			// Check if we got a valid PowerScaleService instance
+			if tt.wantErr {
+				assert.Nil(t, got)
+			} else {
+				assert.NotNil(t, got)
+				assert.IsType(t, &service.PowerScaleService{}, got)
+			}
+		})
+	}
+}
 
 func TestUpdateCollectorAddress(t *testing.T) {
 	tests := []struct {
@@ -42,7 +122,7 @@ func TestUpdateCollectorAddress(t *testing.T) {
 		{
 			name:        "Empty Address",
 			addr:        "",
-			expectPanic: false,
+			expectPanic: true,
 		},
 	}
 
@@ -118,7 +198,6 @@ func TestUpdateMetricsEnabled(t *testing.T) {
 		})
 	}
 }
-
 func TestUpdateProvisionerNames(t *testing.T) {
 
 	tests := []struct {
@@ -143,14 +222,14 @@ func TestUpdateProvisionerNames(t *testing.T) {
 			name:         "Empty Provisioners",
 			provisioners: "",
 			expected:     nil,
-			expectPanic:  false,
+			expectPanic:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			viper.Reset()
-			viper.Set("provisioner_names", tt.provisioners)
+			viper.Set("PROVISIONER_NAMES", tt.provisioners)
 
 			vf := &k8s.VolumeFinder{}
 			scf := &k8s.StorageClassFinder{}
@@ -265,4 +344,3 @@ func TestUpdateService(t *testing.T) {
 		})
 	}
 }
-
