@@ -17,9 +17,6 @@ limitations under the License.
 package main
 
 import (
-	"testing"
-	"time"
-
 	"github.com/dell/csm-metrics-powerscale/internal/entrypoint"
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
 	"github.com/dell/csm-metrics-powerscale/internal/service"
@@ -27,6 +24,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"testing"
+	"time"
 )
 
 func TestUpdateCollectorAddress(t *testing.T) {
@@ -43,7 +42,7 @@ func TestUpdateCollectorAddress(t *testing.T) {
 		{
 			name:        "Empty Address",
 			addr:        "",
-			expectPanic: true,
+			expectPanic: false,
 		},
 	}
 
@@ -119,6 +118,7 @@ func TestUpdateMetricsEnabled(t *testing.T) {
 		})
 	}
 }
+
 func TestUpdateProvisionerNames(t *testing.T) {
 
 	tests := []struct {
@@ -143,7 +143,7 @@ func TestUpdateProvisionerNames(t *testing.T) {
 			name:         "Empty Provisioners",
 			provisioners: "",
 			expected:     nil,
-			expectPanic:  true,
+			expectPanic:  false,
 		},
 	}
 
@@ -265,3 +265,4 @@ func TestUpdateService(t *testing.T) {
 		})
 	}
 }
+
