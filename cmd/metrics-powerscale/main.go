@@ -41,29 +41,34 @@ const (
 	defaultStorageSystemConfigFile = "/isilon-creds/config"
 )
 
-// added for testing purposes
+// Added for testing purposes
 var getPowerScaleClusters = common.GetPowerScaleClusters
 
 func main() {
+	logger, config, exporter, powerScaleSvc := initializeComponents()
+
+	if err := entrypoint.Run(context.Background(), config, exporter, powerScaleSvc); err != nil {
+		logger.WithError(err).Fatal("running service")
+	}
+}
+
+func initializeComponents() (*logrus.Logger, *entrypoint.Config, *otlexporters.OtlCollectorExporter, *service.PowerScaleService) {
 	logger := setupLogger()
+
 	loadConfig(logger)
+
 	configFileListener := setupConfigFileListener()
 	leaderElector := &k8s.LeaderElector{API: &k8s.LeaderElector{}}
-
 	config := setupConfig(logger, leaderElector)
 	exporter := &otlexporters.OtlCollectorExporter{}
 	powerScaleSvc := setupPowerScaleService(logger)
 
-	// Initial configuration updates
 	applyInitialConfigUpdates(config, exporter, powerScaleSvc, logger)
 
 	// Watch for config changes and update settings dynamically
 	setupConfigWatchers(configFileListener, config, exporter, powerScaleSvc, logger)
 
-	// Start the service
-	if err := entrypoint.Run(context.Background(), config, exporter, powerScaleSvc); err != nil {
-		logger.WithError(err).Fatal("running service")
-	}
+	return logger, config, exporter, powerScaleSvc
 }
 
 // setupLogger initializes and configures the logger.
@@ -74,7 +79,7 @@ func setupLogger() *logrus.Logger {
 }
 
 // loadConfig loads the primary configuration file.
-func loadConfig(logger *logrus.Logger) {
+func loadConfig(_ *logrus.Logger) {
 	viper.SetConfigFile(defaultConfigFile)
 	if err := viper.ReadInConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "unable to read Config file: %v", err)
@@ -160,7 +165,7 @@ func updateLoggingSettings(logger *logrus.Logger) {
 }
 
 func updatePowerScaleConnection(powerScaleSvc *service.PowerScaleService, storageClassFinder *k8s.StorageClassFinder, volumeFinder *k8s.VolumeFinder, logger *logrus.Logger) {
-	clusters, defaultCluster, err := common.GetPowerScaleClusters(defaultStorageSystemConfigFile, logger)
+	clusters, defaultCluster, err := getPowerScaleClusters(defaultStorageSystemConfigFile, logger)
 	if err != nil {
 		logger.WithError(err).Fatal("initialize clusters in controller service")
 	}

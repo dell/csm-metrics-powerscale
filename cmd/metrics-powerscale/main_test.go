@@ -17,7 +17,9 @@ limitations under the License.
 package main
 
 import (
+	"log"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,6 +33,115 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
+
+func TestInitializeComponents(t *testing.T) {
+	// Mock getPowerScaleClusters to avoid file I/O
+	originalGetPowerScaleClusters := getPowerScaleClusters
+	defer func() { getPowerScaleClusters = originalGetPowerScaleClusters }()
+	getPowerScaleClusters = func(filePath string, logger *logrus.Logger) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
+		return map[string]*service.PowerScaleCluster{
+				"cluster1": {
+					ClusterName: "cluster1",
+					Client:      &goisilon.Client{},
+					IsiPath:     "/ifs/data/csi",
+					IsDefault:   true,
+				},
+			}, &service.PowerScaleCluster{
+				ClusterName: "cluster1",
+				Client:      &goisilon.Client{},
+				IsiPath:     "/ifs/data/csi",
+				IsDefault:   true,
+			}, nil
+	}
+
+	// Mock Viper to avoid reading from the actual config file
+	viper.Reset()
+	viper.SetConfigType("yaml")
+	viper.SetConfigFile(defaultConfigFile)
+
+	// Mock the config file content
+	configContent := `
+LOG_LEVEL: debug
+COLLECTOR_ADDR: localhost:4317
+PROVISIONER_NAMES: csi-isilon
+POWERSCALE_CAPACITY_METRICS_ENABLED: true
+POWERSCALE_PERFORMANCE_METRICS_ENABLED: true
+TLS_ENABLED: false
+`
+	err := viper.ReadConfig(strings.NewReader(configContent))
+	if err != nil {
+		// Handle the error or log it
+		log.Printf("Error reading config: %v", err)
+	}
+
+	tests := []struct {
+		name                  string
+		envVars               map[string]string
+		expectedLogLevel      logrus.Level
+		expectedCollectorAddr string
+		expectedProvisioners  []string
+		expectedCertPath      string
+	}{
+		{
+			name: "SuccessfulInitializationWithDefaults",
+			envVars: map[string]string{
+				"LOG_LEVEL":                              "debug",
+				"COLLECTOR_ADDR":                         "localhost:4317",
+				"PROVISIONER_NAMES":                      "csi-isilon",
+				"POWERSCALE_CAPACITY_METRICS_ENABLED":    "true",
+				"POWERSCALE_PERFORMANCE_METRICS_ENABLED": "true",
+				"TLS_ENABLED":                            "false",
+			},
+			expectedLogLevel:      logrus.DebugLevel,
+			expectedCollectorAddr: "localhost:4317",
+			expectedProvisioners:  []string{"csi-isilon"},
+			expectedCertPath:      otlexporters.DefaultCollectorCertPath,
+		},
+		{
+			name: "TLSEnabledWithCustomCertPath",
+			envVars: map[string]string{
+				"LOG_LEVEL":           "info",
+				"COLLECTOR_ADDR":      "collector:4317",
+				"PROVISIONER_NAMES":   "csi-isilon",
+				"TLS_ENABLED":         "true",
+				"COLLECTOR_CERT_PATH": "/custom/cert/path",
+			},
+			expectedLogLevel:      logrus.InfoLevel,
+			expectedCollectorAddr: "collector:4317",
+			expectedProvisioners:  []string{"csi-isilon"},
+			expectedCertPath:      "/custom/cert/path",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset Viper and set environment variables for each test case
+			viper.Reset()
+			for k, v := range tt.envVars {
+				os.Setenv(k, v)
+				defer os.Unsetenv(k)
+			}
+
+			// Mock the config file content for each test case
+			viper.SetConfigType("yaml")
+			viper.SetConfigFile(defaultConfigFile)
+
+			err := viper.ReadConfig(strings.NewReader(configContent))
+			if err != nil {
+				// Handle the error or log it
+				log.Printf("Error reading config: %v", err)
+			}
+			logger, config, exporter, svc := initializeComponents()
+
+			// Assert components are initialized
+			assert.NotNil(t, logger)
+			assert.NotNil(t, config)
+			assert.NotNil(t, exporter)
+			assert.NotNil(t, svc)
+
+		})
+	}
+}
 
 func TestSetupLogger(t *testing.T) {
 	tests := []struct {
@@ -84,6 +195,70 @@ func TestLoadConfig(t *testing.T) {
 	}
 }
 
+func TestSetupConfigFileListener(t *testing.T) {
+	tests := []struct {
+		name          string
+		expectedError bool
+	}{
+		{"Valid Config File Listener", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			listener := setupConfigFileListener()
+			assert.NotNil(t, listener, "Expected valid config file listener")
+		})
+	}
+}
+
+func TestSetupConfig(t *testing.T) {
+	tests := []struct {
+		name          string
+		expectedError bool
+	}{
+		{"Valid Config Setup", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := logrus.New()
+			leaderElector := &k8s.LeaderElector{}
+			config := setupConfig(logger, leaderElector)
+			assert.NotNil(t, config, "Expected valid config")
+		})
+	}
+}
+
+func TestGetCollectorCertPath(t *testing.T) {
+	t.Run("Valid Cert Path", func(t *testing.T) {
+		os.Setenv("TLS_ENABLED", "true")
+		os.Setenv("COLLECTOR_CERT_PATH", "/path/to/cert")
+		path := getCollectorCertPath()
+		assert.Equal(t, "/path/to/cert", path)
+	})
+
+	t.Run("TLS Enabled But No Cert Path", func(t *testing.T) {
+		os.Setenv("TLS_ENABLED", "true")
+		os.Setenv("COLLECTOR_CERT_PATH", "") // Explicitly setting it to empty
+		path := getCollectorCertPath()
+		assert.Equal(t, otlexporters.DefaultCollectorCertPath, path)
+	})
+
+	t.Run("TLS Disabled", func(t *testing.T) {
+		os.Setenv("TLS_ENABLED", "false")
+		path := getCollectorCertPath()
+		assert.Equal(t, otlexporters.DefaultCollectorCertPath, path)
+	})
+
+	t.Run("TLS Not Set", func(t *testing.T) {
+		os.Unsetenv("TLS_ENABLED")
+		os.Unsetenv("COLLECTOR_CERT_PATH")
+		path := getCollectorCertPath()
+		assert.Equal(t, otlexporters.DefaultCollectorCertPath, path)
+	})
+}
+
 func TestSetupPowerScaleService(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -107,6 +282,145 @@ func TestSetupPowerScaleService(t *testing.T) {
 				assert.NotNil(t, got)
 				assert.IsType(t, &service.PowerScaleService{}, got)
 			}
+		})
+	}
+}
+
+func TestApplyInitialConfigUpdates(t *testing.T) {
+	logger := logrus.New()
+	leaderElector := &k8s.LeaderElector{}
+	config := setupConfig(logger, leaderElector)
+
+	// Mock the dependencies
+	exporter := &otlexporters.OtlCollectorExporter{}
+	powerScaleSvc := &service.PowerScaleService{
+		Logger:             logger,
+		MetricsWrapper:     &service.MetricsWrapper{},
+		StorageClassFinder: &k8s.StorageClassFinder{}, // Ensure non-nil values
+		VolumeFinder:       &k8s.VolumeFinder{},
+	}
+
+	// Mock getPowerScaleClusters to avoid file dependency
+	originalGetPowerScaleClusters := getPowerScaleClusters
+	defer func() { getPowerScaleClusters = originalGetPowerScaleClusters }()
+
+	getPowerScaleClusters = func(_ string, _ *logrus.Logger) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
+		return map[string]*service.PowerScaleCluster{}, nil, nil
+	}
+
+	// Mock configurations
+	viper.Set("COLLECTOR_ADDR", "localhost:4317")
+	viper.Set("PROVISIONER_NAMES", "isilon")
+	viper.Set("POWERSCALE_QUOTA_CAPACITY_POLL_FREQUENCY", "30") // Must be a valid number
+	viper.Set("POWERSCALE_MAX_CONCURRENT_QUERIES", "5")
+
+	// Ensure applyInitialConfigUpdates does not panic
+	assert.NotPanics(t, func() {
+		applyInitialConfigUpdates(config, exporter, powerScaleSvc, logger)
+	}, "applyInitialConfigUpdates() should not panic")
+
+	// Validate config values were updated
+	assert.Equal(t, "localhost:4317", config.CollectorAddress)
+	assert.True(t, config.CapacityMetricsEnabled)
+	assert.True(t, config.PerformanceMetricsEnabled)
+}
+
+func TestSetupConfigWatchers(t *testing.T) {
+	logger := logrus.New()
+	config := &entrypoint.Config{}
+	exporter := &otlexporters.OtlCollectorExporter{}
+	powerScaleSvc := &service.PowerScaleService{}
+	configFileListener := setupConfigFileListener()
+
+	tests := []struct {
+		name          string
+		expectedError bool
+	}{
+		{"Valid Config Watchers Setup", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.NotPanics(t, func() {
+				setupConfigWatchers(configFileListener, config, exporter, powerScaleSvc, logger)
+			}, "Expected setupConfigWatchers to not panic")
+		})
+	}
+}
+
+type MockGetPowerScaleClusters struct {
+	mock.Mock
+}
+
+func (m *MockGetPowerScaleClusters) GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
+	args := m.Called(filePath, logger)
+	return args.Get(0).(map[string]*service.PowerScaleCluster), args.Get(1).(*service.PowerScaleCluster), args.Error(2)
+}
+
+func TestUpdatePowerScaleConnection(t *testing.T) {
+
+	originalGetPowerScaleClusters := getPowerScaleClusters
+	defer func() { getPowerScaleClusters = originalGetPowerScaleClusters }()
+
+	tests := []struct {
+		name               string
+		clusters           map[string]*service.PowerScaleCluster
+		defaultCluster     *service.PowerScaleCluster
+		getClustersError   error
+		expectedError      bool
+		expectedClientLen  int
+		expectedIsiPathLen int
+	}{
+		{
+			name: "Success - Single Cluster",
+			clusters: map[string]*service.PowerScaleCluster{
+				"cluster1": {
+					ClusterName: "cluster1",
+					Client:      &goisilon.Client{},
+					IsiPath:     "/ifs/data/csi",
+					IsDefault:   true,
+				},
+			},
+			defaultCluster: &service.PowerScaleCluster{
+				ClusterName: "cluster1",
+				Client:      &goisilon.Client{},
+				IsiPath:     "/ifs/data/csi",
+				IsDefault:   true,
+			},
+			getClustersError:   nil,
+			expectedError:      false,
+			expectedClientLen:  1,
+			expectedIsiPathLen: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup mock
+			mockGetter := new(MockGetPowerScaleClusters)
+			mockGetter.On("GetPowerScaleClusters", mock.Anything, mock.Anything).Return(tt.clusters, tt.defaultCluster, tt.getClustersError)
+
+			// Override the function variable
+			getPowerScaleClusters = mockGetter.GetPowerScaleClusters
+
+			// Initialize service and dependencies
+			logger := logrus.New()
+			powerScaleSvc := &service.PowerScaleService{
+				PowerScaleClients: make(map[string]service.PowerScaleClient),
+				ClientIsiPaths:    make(map[string]string),
+			}
+			storageClassFinder := &k8s.StorageClassFinder{}
+			volumeFinder := &k8s.VolumeFinder{}
+
+			viper.Set("PROVISIONER_NAMES", "isilon")
+
+			// Execute
+			updatePowerScaleConnection(powerScaleSvc, storageClassFinder, volumeFinder, logger)
+
+			assert.Equal(t, tt.expectedClientLen, len(powerScaleSvc.PowerScaleClients))
+			assert.Equal(t, tt.expectedIsiPathLen, len(powerScaleSvc.ClientIsiPaths))
+			assert.Equal(t, tt.defaultCluster, powerScaleSvc.DefaultPowerScaleCluster)
+			mockGetter.AssertCalled(t, "GetPowerScaleClusters", mock.Anything, mock.Anything)
 		})
 	}
 }
@@ -344,171 +658,6 @@ func TestUpdateService(t *testing.T) {
 				assert.NotPanics(t, func() { updateService(svc, logger) })
 				assert.Equal(t, tt.expected, svc.MaxPowerScaleConnections)
 			}
-		})
-	}
-}
-
-func TestSetupConfigFileListener(t *testing.T) {
-	tests := []struct {
-		name          string
-		expectedError bool
-	}{
-		{"Valid Config File Listener", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-
-			listener := setupConfigFileListener()
-			assert.NotNil(t, listener, "Expected valid config file listener")
-		})
-	}
-}
-
-func TestGetCollectorCertPath(t *testing.T) {
-	t.Run("Valid Cert Path", func(t *testing.T) {
-		os.Setenv("TLS_ENABLED", "true")
-		os.Setenv("COLLECTOR_CERT_PATH", "/path/to/cert")
-		path := getCollectorCertPath()
-		assert.Equal(t, "/path/to/cert", path)
-	})
-
-	t.Run("TLS Enabled But No Cert Path", func(t *testing.T) {
-		os.Setenv("TLS_ENABLED", "true")
-		os.Setenv("COLLECTOR_CERT_PATH", "") // Explicitly setting it to empty
-		path := getCollectorCertPath()
-		assert.Equal(t, otlexporters.DefaultCollectorCertPath, path)
-	})
-
-	t.Run("TLS Disabled", func(t *testing.T) {
-		os.Setenv("TLS_ENABLED", "false")
-		path := getCollectorCertPath()
-		assert.Equal(t, otlexporters.DefaultCollectorCertPath, path)
-	})
-
-	t.Run("TLS Not Set", func(t *testing.T) {
-		os.Unsetenv("TLS_ENABLED")
-		os.Unsetenv("COLLECTOR_CERT_PATH")
-		path := getCollectorCertPath()
-		assert.Equal(t, otlexporters.DefaultCollectorCertPath, path)
-	})
-}
-
-func TestSetupConfig(t *testing.T) {
-	tests := []struct {
-		name          string
-		expectedError bool
-	}{
-		{"Valid Config Setup", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			logger := logrus.New()
-			leaderElector := &k8s.LeaderElector{}
-			config := setupConfig(logger, leaderElector)
-			assert.NotNil(t, config, "Expected valid config")
-		})
-	}
-}
-
-func TestSetupConfigWatchers(t *testing.T) {
-	logger := logrus.New()
-	config := &entrypoint.Config{}
-	var exporter *otlexporters.OtlCollectorExporter
-	exporter = &otlexporters.OtlCollectorExporter{}
-	powerScaleSvc := &service.PowerScaleService{}
-	configFileListener := setupConfigFileListener()
-
-	tests := []struct {
-		name          string
-		expectedError bool
-	}{
-		{"Valid Config Watchers Setup", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.NotPanics(t, func() {
-				setupConfigWatchers(configFileListener, config, exporter, powerScaleSvc, logger)
-			}, "Expected setupConfigWatchers to not panic")
-		})
-	}
-}
-
-type MockGetPowerScaleClusters struct {
-	mock.Mock
-}
-
-func (m *MockGetPowerScaleClusters) GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
-	args := m.Called(filePath, logger)
-	return args.Get(0).(map[string]*service.PowerScaleCluster), args.Get(1).(*service.PowerScaleCluster), args.Error(2)
-}
-
-func TestUpdatePowerScaleConnection(t *testing.T) {
-
-	originalGetPowerScaleClusters := getPowerScaleClusters
-	defer func() { getPowerScaleClusters = originalGetPowerScaleClusters }()
-
-	tests := []struct {
-		name               string
-		clusters           map[string]*service.PowerScaleCluster
-		defaultCluster     *service.PowerScaleCluster
-		getClustersError   error
-		expectedError      bool
-		expectedClientLen  int
-		expectedIsiPathLen int
-	}{
-		{
-			name: "Success - Single Cluster",
-			clusters: map[string]*service.PowerScaleCluster{
-				"cluster1": {
-					ClusterName: "cluster1",
-					Client:      &goisilon.Client{},
-					IsiPath:     "/ifs/data/csi",
-					IsDefault:   true,
-				},
-			},
-			defaultCluster: &service.PowerScaleCluster{
-				ClusterName: "cluster1",
-				Client:      &goisilon.Client{},
-				IsiPath:     "/ifs/data/csi",
-				IsDefault:   true,
-			},
-			getClustersError:   nil,
-			expectedError:      false,
-			expectedClientLen:  1,
-			expectedIsiPathLen: 1,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup mock
-			mockGetter := new(MockGetPowerScaleClusters)
-			mockGetter.On("GetPowerScaleClusters", mock.Anything, mock.Anything).Return(tt.clusters, tt.defaultCluster, tt.getClustersError)
-
-			// Override the function variable
-			getPowerScaleClusters = mockGetter.GetPowerScaleClusters
-
-			// Initialize service and dependencies
-			logger := logrus.New()
-			powerScaleSvc := &service.PowerScaleService{
-				PowerScaleClients: make(map[string]service.PowerScaleClient),
-				ClientIsiPaths:    make(map[string]string),
-			}
-			storageClassFinder := &k8s.StorageClassFinder{}
-			volumeFinder := &k8s.VolumeFinder{}
-
-			viper.Set("PROVISIONER_NAMES", "isilon")
-
-			// Execute
-			updatePowerScaleConnection(powerScaleSvc, storageClassFinder, volumeFinder, logger)
-
-			assert.Equal(t, tt.expectedClientLen, len(powerScaleSvc.PowerScaleClients))
-			assert.Equal(t, tt.expectedIsiPathLen, len(powerScaleSvc.ClientIsiPaths))
-			assert.Equal(t, tt.defaultCluster, powerScaleSvc.DefaultPowerScaleCluster)
-			mockGetter.AssertCalled(t, "GetPowerScaleClusters", mock.Anything, mock.Anything)
 		})
 	}
 }
