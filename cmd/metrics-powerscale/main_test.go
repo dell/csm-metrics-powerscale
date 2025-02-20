@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -29,6 +30,73 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// MockEntrypoint is a mock for the entrypoint.Run function
+// type MockEntrypoint struct {
+// 	mock.Mock
+// }
+
+// func (m *MockEntrypoint) Run(ctx context.Context, config *entrypoint.Config, exporter otlexporters.Otlexporter, powerScaleSvc service.Service) error {
+// 	args := m.Called(ctx, config, exporter, powerScaleSvc)
+// 	return args.Error(0)
+// }
+
+// // entrypointRun is a function variable to mock entrypoint.Run
+// var entrypointRun = entrypoint.Run
+
+// // osExit is a function variable to mock os.Exit
+// var osExit = os.Exit
+
+// func TestMainFunction(t *testing.T) {
+// 	// Backup original functions and restore them after the test
+// 	oldEntrypointRun := entrypointRun
+// 	oldOsExit := osExit
+// 	defer func() {
+// 		entrypointRun = oldEntrypointRun
+// 		osExit = oldOsExit
+// 	}()
+
+// 	// Setup mock for entrypoint.Run
+// 	mockEntrypoint := new(MockEntrypoint)
+// 	entrypointRun = mockEntrypoint.Run
+
+// 	// Setup mock for os.Exit to capture exit codes
+// 	exitCode := -1
+// 	osExit = func(code int) {
+// 		exitCode = code
+// 	}
+
+// 	// Set test environment variables
+// 	os.Setenv("LOG_FORMAT", "json")
+// 	os.Setenv("LOG_LEVEL", "debug")
+// 	os.Setenv("COLLECTOR_ADDR", "localhost:4317")
+// 	os.Setenv("POWERSCALE_CAPACITY_METRICS_ENABLED", "true")
+// 	os.Setenv("POWERSCALE_PERFORMANCE_METRICS_ENABLED", "true")
+
+// 	// Mock Viper configuration
+// 	viper.SetConfigFile(defaultConfigFile)
+// 	viper.ReadInConfig()
+// 	viper.WatchConfig()
+// 	viper.OnConfigChange(func(e fsnotify.Event) {})
+
+// 	// Create a test context with timeout
+// 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+// 	defer cancel()
+
+// 	// Simulate the main function execution in a goroutine
+// 	go func() {
+// 		main()
+// 		cancel() // Ensure test exits
+// 	}()
+
+// 	// Wait for context to be done or timeout
+// 	<-ctx.Done()
+
+// 	// Verify entrypoint.Run was called with expected arguments
+// 	mockEntrypoint.AssertCalled(t, "Run", mock.Anything, mock.AnythingOfType("*entrypoint.Config"), mock.AnythingOfType("*otlexporters.OtlCollectorExporter"), mock.AnythingOfType("*service.PowerScaleService"))
+
+//		// Verify no fatal errors occurred (os.Exit not called)
+//		assert.Equal(t, -1, exitCode, "main() exited unexpectedly")
+//	}
 func TestSetupLogger(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -341,6 +409,94 @@ func TestUpdateService(t *testing.T) {
 				assert.NotPanics(t, func() { updateService(svc, logger) })
 				assert.Equal(t, tt.expected, svc.MaxPowerScaleConnections)
 			}
+		})
+	}
+}
+
+func TestSetupConfigFileListener(t *testing.T) {
+	tests := []struct {
+		name          string
+		expectedError bool
+	}{
+		{"Valid Config File Listener", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+			listener := setupConfigFileListener()
+			assert.NotNil(t, listener, "Expected valid config file listener")
+		})
+	}
+}
+
+func TestGetCollectorCertPath(t *testing.T) {
+	t.Run("Valid Cert Path", func(t *testing.T) {
+		os.Setenv("TLS_ENABLED", "true")
+		os.Setenv("COLLECTOR_CERT_PATH", "/path/to/cert")
+		path := getCollectorCertPath()
+		assert.Equal(t, "/path/to/cert", path)
+	})
+
+	t.Run("TLS Enabled But No Cert Path", func(t *testing.T) {
+		os.Setenv("TLS_ENABLED", "true")
+		os.Setenv("COLLECTOR_CERT_PATH", "") // Explicitly setting it to empty
+		path := getCollectorCertPath()
+		assert.Equal(t, otlexporters.DefaultCollectorCertPath, path)
+	})
+
+	t.Run("TLS Disabled", func(t *testing.T) {
+		os.Setenv("TLS_ENABLED", "false")
+		path := getCollectorCertPath()
+		assert.Equal(t, otlexporters.DefaultCollectorCertPath, path)
+	})
+
+	t.Run("TLS Not Set", func(t *testing.T) {
+		os.Unsetenv("TLS_ENABLED")
+		os.Unsetenv("COLLECTOR_CERT_PATH")
+		path := getCollectorCertPath()
+		assert.Equal(t, otlexporters.DefaultCollectorCertPath, path)
+	})
+}
+
+func TestSetupConfig(t *testing.T) {
+	tests := []struct {
+		name          string
+		expectedError bool
+	}{
+		{"Valid Config Setup", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := logrus.New()
+			leaderElector := &k8s.LeaderElector{}
+			config := setupConfig(logger, leaderElector)
+			assert.NotNil(t, config, "Expected valid config")
+		})
+	}
+}
+
+func TestSetupConfigWatchers(t *testing.T) {
+	logger := logrus.New()
+	config := &entrypoint.Config{}
+	var exporter *otlexporters.OtlCollectorExporter
+	exporter = &otlexporters.OtlCollectorExporter{}
+	powerScaleSvc := &service.PowerScaleService{}
+	configFileListener := setupConfigFileListener()
+
+	tests := []struct {
+		name          string
+		expectedError bool
+	}{
+		{"Valid Config Watchers Setup", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.NotPanics(t, func() {
+				setupConfigWatchers(configFileListener, config, exporter, powerScaleSvc, logger)
+			}, "Expected setupConfigWatchers to not panic")
 		})
 	}
 }
