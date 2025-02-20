@@ -38,7 +38,7 @@ func TestInitializeComponents(t *testing.T) {
 	// Mock getPowerScaleClusters to avoid file I/O
 	originalGetPowerScaleClusters := getPowerScaleClusters
 	defer func() { getPowerScaleClusters = originalGetPowerScaleClusters }()
-	getPowerScaleClusters = func(filePath string, logger *logrus.Logger) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
+	getPowerScaleClusters = func(_ string, logger *logrus.Logger) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
 		return map[string]*service.PowerScaleCluster{
 				"cluster1": {
 					ClusterName: "cluster1",
@@ -178,7 +178,7 @@ func TestLoadConfig(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name, func(_ *testing.T) {
 			// Simulating different config file conditions
 			if tt.wantErr {
 				viper.SetConfigFile("/invalid/path")
