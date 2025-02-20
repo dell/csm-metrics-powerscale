@@ -138,7 +138,6 @@ TLS_ENABLED: false
 			assert.NotNil(t, config)
 			assert.NotNil(t, exporter)
 			assert.NotNil(t, svc)
-
 		})
 	}
 }
@@ -205,7 +204,6 @@ func TestSetupConfigFileListener(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			listener := setupConfigFileListener()
 			assert.NotNil(t, listener, "Expected valid config file listener")
 		})
@@ -358,7 +356,6 @@ func (m *MockGetPowerScaleClusters) GetPowerScaleClusters(filePath string, logge
 }
 
 func TestUpdatePowerScaleConnection(t *testing.T) {
-
 	originalGetPowerScaleClusters := getPowerScaleClusters
 	defer func() { getPowerScaleClusters = originalGetPowerScaleClusters }()
 
@@ -515,8 +512,8 @@ func TestUpdateMetricsEnabled(t *testing.T) {
 		})
 	}
 }
-func TestUpdateProvisionerNames(t *testing.T) {
 
+func TestUpdateProvisionerNames(t *testing.T) {
 	tests := []struct {
 		name         string
 		provisioners string
