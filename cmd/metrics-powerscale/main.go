@@ -41,6 +41,9 @@ const (
 	defaultStorageSystemConfigFile = "/isilon-creds/config"
 )
 
+// added for testing purposes
+var getPowerScaleClusters = common.GetPowerScaleClusters
+
 func main() {
 	logger := setupLogger()
 	loadConfig(logger)

@@ -25,78 +25,13 @@ import (
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
 	"github.com/dell/csm-metrics-powerscale/internal/service"
 	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
+	"github.com/dell/goisilon"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
-// MockEntrypoint is a mock for the entrypoint.Run function
-// type MockEntrypoint struct {
-// 	mock.Mock
-// }
-
-// func (m *MockEntrypoint) Run(ctx context.Context, config *entrypoint.Config, exporter otlexporters.Otlexporter, powerScaleSvc service.Service) error {
-// 	args := m.Called(ctx, config, exporter, powerScaleSvc)
-// 	return args.Error(0)
-// }
-
-// // entrypointRun is a function variable to mock entrypoint.Run
-// var entrypointRun = entrypoint.Run
-
-// // osExit is a function variable to mock os.Exit
-// var osExit = os.Exit
-
-// func TestMainFunction(t *testing.T) {
-// 	// Backup original functions and restore them after the test
-// 	oldEntrypointRun := entrypointRun
-// 	oldOsExit := osExit
-// 	defer func() {
-// 		entrypointRun = oldEntrypointRun
-// 		osExit = oldOsExit
-// 	}()
-
-// 	// Setup mock for entrypoint.Run
-// 	mockEntrypoint := new(MockEntrypoint)
-// 	entrypointRun = mockEntrypoint.Run
-
-// 	// Setup mock for os.Exit to capture exit codes
-// 	exitCode := -1
-// 	osExit = func(code int) {
-// 		exitCode = code
-// 	}
-
-// 	// Set test environment variables
-// 	os.Setenv("LOG_FORMAT", "json")
-// 	os.Setenv("LOG_LEVEL", "debug")
-// 	os.Setenv("COLLECTOR_ADDR", "localhost:4317")
-// 	os.Setenv("POWERSCALE_CAPACITY_METRICS_ENABLED", "true")
-// 	os.Setenv("POWERSCALE_PERFORMANCE_METRICS_ENABLED", "true")
-
-// 	// Mock Viper configuration
-// 	viper.SetConfigFile(defaultConfigFile)
-// 	viper.ReadInConfig()
-// 	viper.WatchConfig()
-// 	viper.OnConfigChange(func(e fsnotify.Event) {})
-
-// 	// Create a test context with timeout
-// 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-// 	defer cancel()
-
-// 	// Simulate the main function execution in a goroutine
-// 	go func() {
-// 		main()
-// 		cancel() // Ensure test exits
-// 	}()
-
-// 	// Wait for context to be done or timeout
-// 	<-ctx.Done()
-
-// 	// Verify entrypoint.Run was called with expected arguments
-// 	mockEntrypoint.AssertCalled(t, "Run", mock.Anything, mock.AnythingOfType("*entrypoint.Config"), mock.AnythingOfType("*otlexporters.OtlCollectorExporter"), mock.AnythingOfType("*service.PowerScaleService"))
-
-//		// Verify no fatal errors occurred (os.Exit not called)
-//		assert.Equal(t, -1, exitCode, "main() exited unexpectedly")
-//	}
 func TestSetupLogger(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -497,6 +432,83 @@ func TestSetupConfigWatchers(t *testing.T) {
 			assert.NotPanics(t, func() {
 				setupConfigWatchers(configFileListener, config, exporter, powerScaleSvc, logger)
 			}, "Expected setupConfigWatchers to not panic")
+		})
+	}
+}
+
+type MockGetPowerScaleClusters struct {
+	mock.Mock
+}
+
+func (m *MockGetPowerScaleClusters) GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
+	args := m.Called(filePath, logger)
+	return args.Get(0).(map[string]*service.PowerScaleCluster), args.Get(1).(*service.PowerScaleCluster), args.Error(2)
+}
+
+func TestUpdatePowerScaleConnection(t *testing.T) {
+
+	originalGetPowerScaleClusters := getPowerScaleClusters
+	defer func() { getPowerScaleClusters = originalGetPowerScaleClusters }()
+
+	tests := []struct {
+		name               string
+		clusters           map[string]*service.PowerScaleCluster
+		defaultCluster     *service.PowerScaleCluster
+		getClustersError   error
+		expectedError      bool
+		expectedClientLen  int
+		expectedIsiPathLen int
+	}{
+		{
+			name: "Success - Single Cluster",
+			clusters: map[string]*service.PowerScaleCluster{
+				"cluster1": {
+					ClusterName: "cluster1",
+					Client:      &goisilon.Client{},
+					IsiPath:     "/ifs/data/csi",
+					IsDefault:   true,
+				},
+			},
+			defaultCluster: &service.PowerScaleCluster{
+				ClusterName: "cluster1",
+				Client:      &goisilon.Client{},
+				IsiPath:     "/ifs/data/csi",
+				IsDefault:   true,
+			},
+			getClustersError:   nil,
+			expectedError:      false,
+			expectedClientLen:  1,
+			expectedIsiPathLen: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup mock
+			mockGetter := new(MockGetPowerScaleClusters)
+			mockGetter.On("GetPowerScaleClusters", mock.Anything, mock.Anything).Return(tt.clusters, tt.defaultCluster, tt.getClustersError)
+
+			// Override the function variable
+			getPowerScaleClusters = mockGetter.GetPowerScaleClusters
+
+			// Initialize service and dependencies
+			logger := logrus.New()
+			powerScaleSvc := &service.PowerScaleService{
+				PowerScaleClients: make(map[string]service.PowerScaleClient),
+				ClientIsiPaths:    make(map[string]string),
+			}
+			storageClassFinder := &k8s.StorageClassFinder{}
+			volumeFinder := &k8s.VolumeFinder{}
+
+			viper.Set("PROVISIONER_NAMES", "isilon")
+
+			// Execute
+			updatePowerScaleConnection(powerScaleSvc, storageClassFinder, volumeFinder, logger)
+
+			assert.Equal(t, tt.expectedClientLen, len(powerScaleSvc.PowerScaleClients))
+			assert.Equal(t, tt.expectedIsiPathLen, len(powerScaleSvc.ClientIsiPaths))
+			assert.Equal(t, tt.defaultCluster, powerScaleSvc.DefaultPowerScaleCluster)
+			mockGetter.AssertCalled(t, "GetPowerScaleClusters", mock.Anything, mock.Anything)
 		})
 	}
 }
