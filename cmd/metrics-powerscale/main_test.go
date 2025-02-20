@@ -38,7 +38,7 @@ func TestInitializeComponents(t *testing.T) {
 	// Mock getPowerScaleClusters to avoid file I/O
 	originalGetPowerScaleClusters := getPowerScaleClusters
 	defer func() { getPowerScaleClusters = originalGetPowerScaleClusters }()
-	getPowerScaleClusters = func(_ string, logger *logrus.Logger) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
+	getPowerScaleClusters = func(_ string, _ *logrus.Logger) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
 		return map[string]*service.PowerScaleCluster{
 				"cluster1": {
 					ClusterName: "cluster1",
