@@ -18,12 +18,12 @@ package service_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"testing"
 
 	"github.com/dell/goisilon"
-	"github.com/dell/goisilon/api/json"
 	v1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
