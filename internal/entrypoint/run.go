@@ -144,6 +144,7 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 				continue
 			}
 			powerScaleSvc.ExportQuotaMetrics(ctx)
+			powerScaleSvc.ExportTopologyMetrics(ctx)
 		case err := <-errCh:
 			if err == nil {
 				continue

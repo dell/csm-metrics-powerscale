@@ -34,6 +34,7 @@ type MetricsRecorder interface {
 	RecordClusterQuota(ctx context.Context, meta interface{}, metric *ClusterQuotaRecord) error
 	RecordClusterCapacityStatsMetrics(ctx context.Context, metric *ClusterCapacityStatsMetricsRecord) error
 	RecordClusterPerformanceStatsMetrics(ctx context.Context, metric *ClusterPerformanceStatsMetricsRecord) error
+	RecordTopologyMetrics(ctx context.Context, meta interface{}, metric *TopologyMetricsRecord) error
 }
 
 // MeterCreator interface is used to create and provide Meter instances, which are used to report measurements
@@ -52,6 +53,7 @@ type MetricsWrapper struct {
 	ClusterPerformanceStatsMetrics sync.Map
 	VolumeQuotaMetrics             sync.Map
 	ClusterQuotaMetrics            sync.Map
+	TopologyMetrics                sync.Map
 }
 
 // VolumeQuotaMetrics contains volume quota metrics data
@@ -60,6 +62,10 @@ type VolumeQuotaMetrics struct {
 	HardQuotaRemaining    otelMetric.Float64ObservableUpDownCounter
 	QuotaSubscribedPct    otelMetric.Float64ObservableUpDownCounter
 	HardQuotaRemainingPct otelMetric.Float64ObservableUpDownCounter
+}
+
+type TopologyMetrics struct {
+	PvcSize otelMetric.Float64ObservableUpDownCounter
 }
 
 // ClusterQuotaMetrics contains quota capacity in all directories
@@ -450,6 +456,100 @@ func (mw *MetricsWrapper) initClusterPerformanceStatsMetrics(prefix string, id s
 
 	mw.ClusterPerformanceStatsMetrics.Store(id, metrics)
 	mw.Labels.Store(id, labels)
+
+	return metrics, nil
+}
+
+// RecordVolumeQuota will publish volume Quota metrics data
+func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interface{}, metric *TopologyMetricsRecord) error {
+	var prefix string
+	var metaID string
+	var labels []attribute.KeyValue
+
+	switch v := meta.(type) {
+	case *TopologyMeta:
+		metaID = v.PersistentVolume
+		labels = []attribute.KeyValue{
+			attribute.String("PersistentVolumeClaim", v.PersistentVolumeClaim),
+			attribute.String("Driver", v.Driver),
+			attribute.String("PersistentVolume", v.PersistentVolume),
+			attribute.String("PersistentVolumeStatus", v.PersistentVolumeStatus),
+			attribute.String("StorageClass", v.StorageClass),
+			attribute.String("PlotWithMean", "No"),
+			attribute.String("StorageClass", v.StorageClass),
+			attribute.String("Namespace", v.Namespace),
+			attribute.String("ProvisionedSize", v.ProvisionedSize),
+			attribute.String("StorageSystemVolumeName", v.StorageSystemVolumeName),
+			attribute.String("StorageSystem", v.StorageSystem),
+			attribute.String("Protocol", v.Protocol),
+			attribute.String("CreatedTime", v.CreatedTime),
+		}
+	default:
+		return errors.New("unknown MetaData type")
+	}
+
+	loadMetricsFunc := func(metaID string) (any, bool) {
+		return mw.TopologyMetrics.Load(metaID)
+	}
+
+	initMetricsFunc := func(prefix string, metaID string, labels []attribute.KeyValue) (any, error) {
+		return mw.initTopologyMetrics(metaID, labels)
+	}
+
+	metricsMapValue, err := updateLabels(prefix, metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
+	if err != nil {
+		return err
+	}
+
+	// quotaSub := utils.UnitsConvert(metric.quotaSubscribed, utils.BYTES, utils.GB)
+	// hardQuotaRemSub := utils.UnitsConvert(metric.hardQuotaRemaining, utils.BYTES, utils.GB)
+
+	metrics := metricsMapValue.(*TopologyMetrics)
+
+	done := make(chan struct{})
+	reg, err := mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
+		obs.ObserveFloat64(metrics.PvcSize, float64(metric.pvcSize), otelMetric.WithAttributes(labels...))
+		// obs.ObserveFloat64(metrics.HardQuotaRemaining, hardQuotaRemSub, otelMetric.WithAttributes(labels...))
+		// obs.ObserveFloat64(metrics.QuotaSubscribedPct, metric.quotaSubscribedPct, otelMetric.WithAttributes(labels...))
+		// obs.ObserveFloat64(metrics.HardQuotaRemainingPct, metric.hardQuotaRemainingPct, otelMetric.WithAttributes(labels...))
+		go func() {
+			done <- struct{}{}
+		}()
+		return nil
+	},
+		// metrics.QuotaSubscribed,
+		// metrics.HardQuotaRemaining,
+		// metrics.QuotaSubscribedPct,
+		metrics.PvcSize)
+	if err != nil {
+		return err
+	}
+
+	<-done
+	_ = reg.Unregister()
+
+	return nil
+}
+
+func (mw *MetricsWrapper) initTopologyMetrics(metaID string, labels []attribute.KeyValue) (*TopologyMetrics, error) {
+	pvcSize, _ := mw.Meter.Float64ObservableUpDownCounter("karavi_topology_metrics")
+
+	// hardQuotaRemaining, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_gigabytes")
+
+	// quotaSubscribedPct, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "quota_subscribed_percentage")
+
+	// hardQuotaRemainingPct, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_percentage")
+
+	metrics := &TopologyMetrics{
+		// QuotaSubscribed:       quotaSubscribed,
+		// HardQuotaRemaining:    hardQuotaRemaining,
+		// QuotaSubscribedPct:    quotaSubscribedPct,
+		// HardQuotaRemainingPct: hardQuotaRemainingPct,
+		PvcSize: pvcSize,
+	}
+
+	mw.VolumeQuotaMetrics.Store(metaID, metrics)
+	mw.Labels.Store(metaID, labels)
 
 	return metrics, nil
 }

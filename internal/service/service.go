@@ -19,6 +19,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +48,7 @@ type Service interface {
 	ExportQuotaMetrics(context.Context)
 	ExportClusterCapacityMetrics(context.Context)
 	ExportClusterPerformanceMetrics(context.Context)
+	ExportTopologyMetrics(context.Context)
 }
 
 // PowerScaleClient contains operations for accessing the PowerScale API
@@ -118,6 +120,7 @@ type VolumeQuotaMetricsRecord struct {
 	hardQuotaRemaining    int64
 	quotaSubscribedPct    float64
 	hardQuotaRemainingPct float64
+	pvcSize               int64
 }
 
 // ClusterQuotaRecord used for holding output of the Volume stat query results
@@ -125,6 +128,11 @@ type ClusterQuotaRecord struct {
 	clusterMeta       *ClusterMeta
 	totalHardQuota    int64
 	totalHardQuotaPct float64
+}
+
+type TopologyMetricsRecord struct {
+	topologyMeta *TopologyMeta
+	pvcSize      int64
 }
 
 // ExportQuotaMetrics records quota metrics for the given list of Volumes
@@ -682,6 +690,253 @@ func (s *PowerScaleService) pushClusterPerformanceStatsMetrics(ctx context.Conte
 
 				ch <- metric
 			}(m)
+		}
+		wg.Wait()
+		close(ch)
+	}()
+
+	return ch
+}
+
+// // ExportTopologyMetrics records cluster topology metrics
+// func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
+// 	start := time.Now()
+// 	defer s.timeSince(start, "ExportTopologyMetrics")
+
+// 	if s.MetricsWrapper == nil {
+// 		s.Logger.Warn("no MetricsWrapper provided for getting ExportTopologyMetrics")
+// 		return
+// 	}
+
+// 	// if s.MaxPowerScaleConnections == 0 {
+// 	// 	s.Logger.Debug("Using DefaultMaxPowerScaleConnections")
+// 	// 	s.MaxPowerScaleConnections = DefaultMaxPowerScaleConnections
+// 	// }
+
+// 	for range s.pushTopologyMetrics(ctx, s.gatherTopologyMetrics(ctx)) {
+// 		// consume the channel until it is empty and closed
+// 	} // revive:disable-line:empty-block
+// }
+
+// pushClusterStatsMetrics will push the provided channel of cluster stats metrics to a data collector
+// func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyData <-chan *TopologyMetricsRecord) <-chan *TopologyMetricsRecord {
+// 	start := time.Now()
+// 	defer s.timeSince(start, "pushClusterCapacityStatsMetrics")
+// 	var wg sync.WaitGroup
+
+// 	ch := make(chan *TopologyMetricsRecord)
+// 	go func() {
+// 		for m := range topologyData {
+// 			wg.Add(1)
+// 			go func(metric *TopologyMetricsRecord) {
+// 				defer wg.Done()
+// 				err := s.MetricsWrapper.RecordTopologyMetrics(ctx, metric)
+// 				if err != nil {
+// 					s.Logger.WithError(err).Errorf("recording capcity stats for PowerScale cluster, metric=%+v", *metric)
+// 				}
+
+// 				ch <- metric
+// 			}(m)
+// 		}
+// 		wg.Wait()
+// 		close(ch)
+// 	}()
+
+// 	return ch
+// }
+
+func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
+	start := time.Now()
+	defer s.timeSince(start, "ExportTopologyMetrics")
+
+	if s.MetricsWrapper == nil {
+		s.Logger.Warn("no MetricsWrapper provided for getting ExportTopologyMetrics")
+		return
+	}
+
+	// if s.MaxPowerScaleConnections == 0 {
+	// 	s.Logger.Debug("Using DefaultMaxPowerScaleConnections")
+	// 	s.MaxPowerScaleConnections = DefaultMaxPowerScaleConnections
+	// }
+
+	pvs, err := s.VolumeFinder.GetPersistentVolumes(ctx)
+	if err != nil {
+		s.Logger.WithError(err).Error("getting persistent volumes")
+		return
+	}
+	fmt.Printf("*************************************\npvs: %+v\n", pvs)
+
+	// cluster2Quotas := make(map[string]goisilon.QuotaList)
+	// for clusterName, client := range s.PowerScaleClients {
+	// 	quotaList, err := client.GetAllQuotas(ctx)
+	// 	if err != nil {
+	// 		s.Logger.WithError(err).WithField("cluster_name", clusterName).Error("getting quotas")
+	// 		continue
+	// 	}
+	// 	cluster2Quotas[clusterName] = quotaList
+	// }
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		for range s.pushTopologyMetrics(ctx, s.gatherTopologyMetrics(ctx, s.volumeServer(ctx, pvs))) {
+			// consume the channel until it is empty and closed
+		} // revive:disable-line:empty-block
+		wg.Done()
+	}()
+
+	// go func() {
+	// 	for range s.pushClusterQuotaMetrics(ctx, s.gatherClusterQuotaMetrics(ctx, cluster2Quotas)) {
+	// 		// consume the channel until it is empty and closed
+	// 	} // revive:disable-line:empty-block
+	// 	wg.Done()
+	// }()
+
+	wg.Wait()
+}
+
+func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
+	volumes <-chan k8s.VolumeInfo,
+) <-chan *TopologyMetricsRecord {
+	start := time.Now()
+	defer s.timeSince(start, "gatherTopologyMetrics")
+
+	ch := make(chan *TopologyMetricsRecord)
+	var wg sync.WaitGroup
+	// sem := make(chan struct{}, s.MaxPowerScaleConnections)
+	s.Logger.Info("Volume is: ", volumes)
+
+	go func() {
+		// storageClasses := make(map[string]v1.StorageClass)
+		// scs, err := s.StorageClassFinder.GetStorageClasses(ctx)
+		// if err != nil {
+		// 	s.Logger.WithError(err).Error("failed to get storage classes, skip")
+		// }
+		// for _, sc := range scs {
+		// 	storageClasses[sc.Name] = sc
+		// }
+
+		for volume := range volumes {
+			wg.Add(1)
+			// sem <- struct{}{}
+			go func(volume k8s.VolumeInfo) {
+				// defer func() {
+				// 	wg.Done()
+				// 	<-sem
+				// }()
+
+				// volumeName=_=_=exportID=_=_=accessZone=_=_=clusterName
+				// VolumeHandle is of the format "volumeHandle: k8s-2217be0fe2=_=_=5=_=_=System=_=_=PIE-Isilon-X"
+				volumeProperties := strings.Split(volume.VolumeHandle, "=_=_=")
+				if len(volumeProperties) != ExpectedVolumeHandleProperties {
+					s.Logger.WithField("volume_handle", volume.VolumeHandle).Warn("unable to get VolumeID and ClusterID from volume handle")
+					return
+				}
+
+				// volumeMeta := &VolumeMeta{
+				// 	ID:                        volume.VolumeHandle,
+				// 	PersistentVolumeName:      volume.PersistentVolume,
+				// 	ClusterName:               clusterName,
+				// 	AccessZone:                accessZone,
+				// 	ExportID:                  exportID,
+				// 	StorageClass:              volume.StorageClass,
+				// 	Driver:                    volume.Driver,
+				// 	IsiPath:                   volume.IsiPath,
+				// 	PersistentVolumeClaimName: volume.VolumeClaimName,
+				// 	Namespace:                 volume.Namespace,
+				// }
+
+				// volumeID := volumeProperties[0]
+				// exportID := volumeProperties[1]
+				// accessZone := volumeProperties[2]
+				// clusterName := volumeProperties[3]
+
+				topologyMeta := &TopologyMeta{
+					Namespace:               volume.Namespace,
+					PersistentVolumeClaim:   volume.VolumeClaimName,
+					VolumeClaimName:         volume.PersistentVolume,
+					PersistentVolumeStatus:  volume.PersistentVolumeStatus,
+					PersistentVolume:        volume.PersistentVolume,
+					StorageClass:            volume.StorageClass,
+					Driver:                  volume.Driver,
+					ProvisionedSize:         volume.ProvisionedSize,
+					StorageSystemVolumeName: volume.StorageSystemVolumeName,
+					StoragePoolName:         volume.StoragePoolName,
+					StorageSystem:           volume.StorageSystem,
+					Protocol:                volume.Protocol,
+					CreatedTime:             volume.CreatedTime,
+				}
+
+				// if volumeMeta.IsiPath == "" {
+				// 	if sc, ok := storageClasses[volumeMeta.StorageClass]; ok {
+				// 		path := sc.Parameters["IsiPath"]
+				// 		s.Logger.WithFields(logrus.Fields{"volume_id": volumeMeta.ID, "storage_class": volumeMeta.StorageClass, "isiPath": path}).Info("setting storage_class_isiPath to volume_isiPath")
+				// 		volumeMeta.IsiPath = path
+				// 	}
+				// 	if volumeMeta.IsiPath == "" {
+				// 		s.Logger.WithFields(logrus.Fields{"volume_id": volumeMeta.ID, "storage_class": volumeMeta.StorageClass}).Warn("could not find a StorageClass for Volume, setting client_isiPath to volume_isiPath")
+				// 		volumeMeta.IsiPath, _ = s.getClientIsiPath(ctx, clusterName)
+				// 	}
+				// }
+
+				// path := volumeMeta.IsiPath + "/" + volumeID
+				// var volQuota goisilon.Quota
+				// for _, q := range cluster2Quotas[clusterName] {
+				// 	if q.Path == path && q.Type == DirectoryQuotaType {
+				// 		volQuota = q
+				// 		break
+				// 	}
+				// }
+				// if volQuota == nil {
+				// 	s.Logger.WithError(err).WithField("volume_id", volumeMeta.ID).Error("getting quota metrics")
+				// 	return
+				// }
+
+				pvcSize, _ := strconv.ParseInt(volume.ProvisionedSize, 10, 64)
+				// hardQuotaRemaining := volQuota.Thresholds.Hard - volQuota.Usage.Logical
+
+				// subscribedQuotaPct := float64(0)
+				// hardQuotaRemainingPct := float64(0)
+				// if volQuota.Thresholds.Hard != 0 {
+				// 	subscribedQuotaPct = float64(subscribedQuota) * 100.0 / float64(volQuota.Thresholds.Hard)
+				// 	hardQuotaRemainingPct = float64(hardQuotaRemaining) * 100.0 / float64(volQuota.Thresholds.Hard)
+				// }
+
+				metric := &TopologyMetricsRecord{
+					topologyMeta: topologyMeta,
+					pvcSize:      pvcSize,
+				}
+				s.Logger.Debugf("volume quota metrics %+v", *metric)
+
+				ch <- metric
+			}(volume)
+		}
+
+		wg.Wait()
+		close(ch)
+	}()
+	return ch
+}
+
+// pushVolumeQuotaMetrics will push the provided channel of volume metrics to a data collector
+func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyMetrics <-chan *TopologyMetricsRecord) <-chan string {
+	start := time.Now()
+	defer s.timeSince(start, "pushTopologyMetrics")
+	var wg sync.WaitGroup
+
+	ch := make(chan string)
+	go func() {
+		for metrics := range topologyMetrics {
+			wg.Add(1)
+			go func(metrics *TopologyMetricsRecord) {
+				defer wg.Done()
+				err := s.MetricsWrapper.RecordTopologyMetrics(ctx, metrics.topologyMeta, metrics)
+				if err != nil {
+					s.Logger.WithError(err).WithField("volume_id", metrics.topologyMeta.PersistentVolume).Error("recording metrics for volume")
+				} else {
+					ch <- metrics.topologyMeta.PersistentVolume
+				}
+			}(metrics)
 		}
 		wg.Wait()
 		close(ch)

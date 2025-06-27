@@ -42,17 +42,21 @@ type VolumeFinder struct {
 
 // VolumeInfo contains information about mapping a Persistent Volume to the volume created on a storage system
 type VolumeInfo struct {
-	Namespace              string `json:"namespace"`
-	PersistentVolumeClaim  string `json:"persistent_volume_claim"`
-	PersistentVolumeStatus string `json:"volume_status"`
-	VolumeClaimName        string `json:"volume_claim_name"`
-	PersistentVolume       string `json:"persistent_volume"`
-	StorageClass           string `json:"storage_class"`
-	Driver                 string `json:"driver"`
-	ProvisionedSize        string `json:"provisioned_size"`
-	CreatedTime            string `json:"created_time"`
-	VolumeHandle           string `json:"volume_handle"`
-	IsiPath                string `json:"isipath"`
+	Namespace               string `json:"namespace"`
+	PersistentVolumeClaim   string `json:"persistent_volume_claim"`
+	PersistentVolumeStatus  string `json:"volume_status"`
+	VolumeClaimName         string `json:"volume_claim_name"`
+	PersistentVolume        string `json:"persistent_volume"`
+	StorageClass            string `json:"storage_class"`
+	Driver                  string `json:"driver"`
+	ProvisionedSize         string `json:"provisioned_size"`
+	CreatedTime             string `json:"created_time"`
+	VolumeHandle            string `json:"volume_handle"`
+	IsiPath                 string `json:"isipath"`
+	StorageSystemVolumeName string `json:"storage_system_volume_name"`
+	StoragePoolName         string `json:"storage_pool_name"`
+	StorageSystem           string `json:"storage_system"`
+	Protocol                string `json:"protocol"`
 }
 
 // GetPersistentVolumes will return a list of persistent volume information
