@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2022 Dell Inc. or its subsidiaries. All Rights Reserved.
+ Copyright (c) 2025 Dell Inc. or its subsidiaries. All Rights Reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -24,9 +24,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dell/csm-metrics-powerscale/internal/common"
 	"github.com/dell/csm-metrics-powerscale/internal/entrypoint"
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
+	"github.com/dell/csm-metrics-powerscale/internal/pscaleresource"
 	"github.com/dell/csm-metrics-powerscale/internal/service"
 	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
 	"github.com/fsnotify/fsnotify"
@@ -42,7 +42,7 @@ const (
 )
 
 // Added for testing purposes
-var getPowerScaleClusters = common.GetPowerScaleClusters
+var getPowerScaleClusters = pscaleresource.GetPowerScaleClusters
 
 func main() {
 	logger, config, exporter, powerScaleSvc := initializeComponents()
