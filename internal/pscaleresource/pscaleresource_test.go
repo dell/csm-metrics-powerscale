@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2022 Dell Inc. or its subsidiaries. All Rights Reserved.
+ Copyright (c) 2025 Dell Inc. or its subsidiaries. All Rights Reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  limitations under the License.
 */
 
-package common_test
+package pscaleresource_test
 
 import (
 	"log"
@@ -24,7 +24,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dell/csm-metrics-powerscale/internal/common"
+	"github.com/dell/csm-metrics-powerscale/internal/pscaleresource"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -74,7 +74,7 @@ func Test_Run(t *testing.T) {
 			newContent = strings.Replace(newContent, "[serverport]", serverPort, 1)
 			_ = os.WriteFile(filePath, []byte(newContent), 0o600)
 
-			clusters, defaultCluster, err := common.GetPowerScaleClusters(filePath, logger)
+			clusters, defaultCluster, err := pscaleresource.GetPowerScaleClusters(filePath, logger)
 
 			if expectError {
 				assert.Nil(t, clusters)
