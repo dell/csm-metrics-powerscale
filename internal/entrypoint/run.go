@@ -111,6 +111,8 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 	QuotaCapacityTickInterval := config.QuotaCapacityTickInterval
 	quotaCapacityTicker := time.NewTicker(QuotaCapacityTickInterval)
 
+	fmt.Printf("QuotaCapacityTickInterval %v\n", QuotaCapacityTickInterval)
+
 	for {
 		select {
 		case <-clusterCapacityTicker.C:

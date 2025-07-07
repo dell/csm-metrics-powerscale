@@ -19,6 +19,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/dell/csm-metrics-powerscale/internal/utils"
@@ -66,6 +67,7 @@ type VolumeQuotaMetrics struct {
 
 type TopologyMetrics struct {
 	PvcSize otelMetric.Float64ObservableUpDownCounter
+	Values  sync.Map
 }
 
 // ClusterQuotaMetrics contains quota capacity in all directories
@@ -114,6 +116,12 @@ func haveLabelsChanged(currentLabels []attribute.KeyValue, labels []attribute.Ke
 
 func updateLabels(prefix, metaID string, labels []attribute.KeyValue, mw *MetricsWrapper, loadMetrics loadMetricsFunc, initMetrics initMetricsFunc) (any, error) {
 	metricsMapValue, ok := loadMetrics(metaID)
+	if ok {
+		fmt.Printf("MetricsMapValue init in updatelabels: %v, ok: %v\n", metricsMapValue, ok)
+	} else {
+		fmt.Printf("There is no value for metaID %s in the metrics map\n", metaID)
+	}
+
 	if !ok {
 		newMetrics, err := initMetrics(prefix, metaID, labels)
 		if err != nil {
@@ -137,6 +145,8 @@ func updateLabels(prefix, metaID string, labels []attribute.KeyValue, mw *Metric
 
 	done := make(chan struct{})
 	defer close(done)
+
+	fmt.Printf("MetricsMapValue later in updatelabels: %v, ok: %v\n", metricsMapValue, ok)
 
 	return metricsMapValue, nil
 }
@@ -257,6 +267,13 @@ func (mw *MetricsWrapper) RecordVolumeQuota(_ context.Context, meta interface{},
 
 	loadMetricsFunc := func(metaID string) (any, bool) {
 		return mw.VolumeQuotaMetrics.Load(metaID)
+	}
+	testval, ok := loadMetricsFunc(metaID)
+
+	if ok {
+		fmt.Println("Found in VolumeQuota:", testval)
+	} else {
+		fmt.Println("Key not found for VolumeQuota")
 	}
 
 	initMetricsFunc := func(prefix string, metaID string, labels []attribute.KeyValue) (any, error) {
@@ -469,6 +486,7 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 	switch v := meta.(type) {
 	case *TopologyMeta:
 		metaID = v.PersistentVolume
+		fmt.Printf("value of v is: %v\n", v)
 		labels = []attribute.KeyValue{
 			attribute.String("PersistentVolumeClaim", v.PersistentVolumeClaim),
 			attribute.String("Driver", v.Driver),
@@ -492,6 +510,14 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 		return mw.TopologyMetrics.Load(metaID)
 	}
 
+	testval, ok := loadMetricsFunc(metaID)
+
+	if ok {
+		fmt.Println("Found:", testval)
+	} else {
+		fmt.Println("Key not found")
+	}
+
 	initMetricsFunc := func(prefix string, metaID string, labels []attribute.KeyValue) (any, error) {
 		return mw.initTopologyMetrics(metaID, labels)
 	}
@@ -501,10 +527,13 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 		return err
 	}
 
+	fmt.Printf("labels: %v\n", labels)
+
 	// quotaSub := utils.UnitsConvert(metric.quotaSubscribed, utils.BYTES, utils.GB)
 	// hardQuotaRemSub := utils.UnitsConvert(metric.hardQuotaRemaining, utils.BYTES, utils.GB)
 
 	metrics := metricsMapValue.(*TopologyMetrics)
+	fmt.Printf("metrics        : %v\n", metrics == nil)
 
 	done := make(chan struct{})
 	reg, err := mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
@@ -526,13 +555,19 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 	}
 
 	<-done
-	_ = reg.Unregister()
+	// _ = reg.Unregister()
+	fmt.Printf("registerCallback: %v\n", reg)
 
 	return nil
 }
 
 func (mw *MetricsWrapper) initTopologyMetrics(metaID string, labels []attribute.KeyValue) (*TopologyMetrics, error) {
-	pvcSize, _ := mw.Meter.Float64ObservableUpDownCounter("karavi_topology_metrics")
+	pvcSize, err := mw.Meter.Float64ObservableUpDownCounter("karavi_topology_metrics")
+	if err != nil {
+		fmt.Printf("Error creating pvcSize metric: %v\n", err)
+	} else {
+		fmt.Printf("pvcSize metric created successfully: %v\n", pvcSize)
+	}
 
 	// hardQuotaRemaining, _ := mw.Meter.Float64ObservableUpDownCounter(prefix + "hard_quota_remaining_gigabytes")
 
@@ -548,7 +583,9 @@ func (mw *MetricsWrapper) initTopologyMetrics(metaID string, labels []attribute.
 		PvcSize: pvcSize,
 	}
 
-	mw.VolumeQuotaMetrics.Store(metaID, metrics)
+	fmt.Printf("PvcSize: %v\n", metrics.PvcSize)
+
+	mw.TopologyMetrics.Store(metaID, metrics)
 	mw.Labels.Store(metaID, labels)
 
 	return metrics, nil

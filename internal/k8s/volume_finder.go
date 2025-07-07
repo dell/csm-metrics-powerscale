@@ -26,6 +26,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+const (
+	ProtocolNfs = "nfs"
+)
+
 // VolumeGetter is an interface for getting a list of persistent volume information
 //
 //go:generate mockgen -destination=mocks/volume_getter_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/k8s VolumeGetter
@@ -92,17 +96,21 @@ func (f VolumeFinder) GetPersistentVolumes(_ context.Context) ([]VolumeInfo, err
 			}
 
 			info := VolumeInfo{
-				Namespace:              claim.Namespace,
-				PersistentVolumeClaim:  string(claim.UID),
-				VolumeClaimName:        claim.Name,
-				PersistentVolumeStatus: string(status.Phase),
-				PersistentVolume:       volume.Name,
-				StorageClass:           volume.Spec.StorageClassName,
-				Driver:                 volume.Spec.CSI.Driver,
-				ProvisionedSize:        capacity.String(),
-				CreatedTime:            volume.CreationTimestamp.String(),
-				VolumeHandle:           volume.Spec.CSI.VolumeHandle,
-				IsiPath:                isiPath,
+				Namespace:               claim.Namespace,
+				PersistentVolumeClaim:   string(claim.UID),
+				VolumeClaimName:         claim.Name,
+				PersistentVolumeStatus:  string(status.Phase),
+				PersistentVolume:        volume.Name,
+				StorageClass:            volume.Spec.StorageClassName,
+				Driver:                  volume.Spec.CSI.Driver,
+				ProvisionedSize:         capacity.String(),
+				CreatedTime:             volume.CreationTimestamp.String(),
+				VolumeHandle:            volume.Spec.CSI.VolumeHandle,
+				IsiPath:                 isiPath,
+				StorageSystemVolumeName: volume.Spec.CSI.VolumeAttributes["Name"],
+				StoragePoolName:         volume.Spec.CSI.VolumeAttributes["StoragePoolName"],
+				StorageSystem:           volume.Spec.CSI.VolumeAttributes["ClusterName"] + ":" + volume.Spec.CSI.VolumeAttributes["AccessZone"],
+				Protocol:                ProtocolNfs,
 			}
 			volumeInfo = append(volumeInfo, info)
 		}
