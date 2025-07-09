@@ -71,6 +71,19 @@ type PowerScaleService struct {
 	StorageClassFinder       StorageClassFinder
 }
 
+type TopologyDataUpdate struct {
+	PersistentVolumeClaim  string
+	PersistentVolumeStatus string
+	VolumeClaimName        string
+	PersistentVolume       string
+	ProvisionedSize        string
+	VolumeHandle           string
+}
+
+var CurrentTopologyData []TopologyDataUpdate
+
+var DeleteTopologyData string
+
 // VolumeFinder is used to find volume information in kubernetes
 //
 //go:generate mockgen -destination=mocks/volume_finder_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service VolumeFinder
@@ -701,6 +714,7 @@ func (s *PowerScaleService) pushClusterPerformanceStatsMetrics(ctx context.Conte
 func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 	start := time.Now()
 	defer s.timeSince(start, "ExportTopologyMetrics")
+	DeleteTopologyData = ""
 
 	fmt.Printf("ExportTopologyMetrics starts\n")
 
@@ -719,6 +733,68 @@ func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 		s.Logger.WithError(err).Error("getting persistent volumes")
 		return
 	}
+
+	if CurrentTopologyData == nil {
+		CurrentTopologyData = make([]TopologyDataUpdate, 0)
+		for _, pv := range pvs {
+			fmt.Printf("pv: %+v\n", pv)
+			topologyData := TopologyDataUpdate{
+				PersistentVolume:       pv.PersistentVolume,
+				ProvisionedSize:        pv.ProvisionedSize,
+				PersistentVolumeStatus: pv.PersistentVolumeStatus,
+				PersistentVolumeClaim:  pv.PersistentVolumeClaim,
+				VolumeClaimName:        pv.VolumeClaimName,
+			}
+			CurrentTopologyData = append(CurrentTopologyData, topologyData)
+			// CurrentTopologyData[i].PersistentVolume = pv.PersistentVolume
+			// CurrentTopologyData[i].ProvisionedSize = pv.ProvisionedSize
+			// CurrentTopologyData[i].PersistentVolumeStatus = pv.PersistentVolumeStatus
+			// CurrentTopologyData[i].PersistentVolumeClaim = pv.PersistentVolumeClaim
+			// CurrentTopologyData[i].VolumeClaimName = pv.VolumeClaimName
+		}
+	} else {
+		// for _, pv := range pvs {
+		// var found bool
+
+		// 	for j, currentData := range CurrentTopologyData {
+
+		// 		if currentData.PersistentVolume == pv.PersistentVolume && (CurrentTopologyData[j].ProvisionedSize != pv.ProvisionedSize || CurrentTopologyData[j].PersistentVolumeStatus != pv.PersistentVolumeStatus || CurrentTopologyData[j].PersistentVolumeClaim != pv.PersistentVolumeClaim ||
+		// 			CurrentTopologyData[j].VolumeClaimName != pv.VolumeClaimName) {
+
+		// 			fmt.Printf("There has been a change to volume %v\n", pv.PersistentVolume)
+		// 		}
+		// 	}
+		// }
+
+		for _, pv := range pvs {
+			var found bool
+			for _, currentData := range CurrentTopologyData {
+				if currentData.PersistentVolume == pv.PersistentVolume {
+					found = true
+					break
+				}
+			}
+			if found {
+				fmt.Printf("Volume %v is already present in CurrentTopologyData\n", pv.PersistentVolume)
+				fmt.Printf("Checking if there has been a change to volume %v\n", pv.PersistentVolume)
+				for _, currentData := range CurrentTopologyData {
+					if currentData.ProvisionedSize != pv.ProvisionedSize ||
+						currentData.PersistentVolumeStatus != pv.PersistentVolumeStatus ||
+						currentData.PersistentVolumeClaim != pv.PersistentVolumeClaim ||
+						currentData.VolumeClaimName != pv.VolumeClaimName {
+						DeleteTopologyData = pv.PersistentVolume
+					}
+				}
+
+			} else {
+				fmt.Printf("Volume %v is not present in CurrentTopologyData\n", pv.PersistentVolume)
+				DeleteTopologyData = pv.PersistentVolume
+			}
+		}
+	}
+
+	// Verify if data is deleted
+
 	fmt.Printf("*************************************\npvs: %+v\n", pvs)
 
 	// cluster2Quotas := make(map[string]goisilon.QuotaList)
@@ -859,6 +935,10 @@ func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
 				// 	hardQuotaRemainingPct = float64(hardQuotaRemaining) * 100.0 / float64(volQuota.Thresholds.Hard)
 				// }
 
+				// test test ---------------
+
+				pvcSize = 1
+
 				metric := &TopologyMetricsRecord{
 					topologyMeta: topologyMeta,
 					pvcSize:      pvcSize,
@@ -890,7 +970,7 @@ func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyMet
 			wg.Add(1)
 			go func(metrics *TopologyMetricsRecord) {
 				defer wg.Done()
-				err := s.MetricsWrapper.RecordTopologyMetrics(ctx, metrics.topologyMeta, metrics)
+				err := s.MetricsWrapper.RecordTopologyMetrics(ctx, metrics.topologyMeta, metrics, DeleteTopologyData)
 				if err != nil {
 					s.Logger.WithError(err).WithField("volume_id", metrics.topologyMeta.PersistentVolume).Error("recording topology metrics for volume")
 				} else {

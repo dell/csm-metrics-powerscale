@@ -35,7 +35,7 @@ type MetricsRecorder interface {
 	RecordClusterQuota(ctx context.Context, meta interface{}, metric *ClusterQuotaRecord) error
 	RecordClusterCapacityStatsMetrics(ctx context.Context, metric *ClusterCapacityStatsMetricsRecord) error
 	RecordClusterPerformanceStatsMetrics(ctx context.Context, metric *ClusterPerformanceStatsMetricsRecord) error
-	RecordTopologyMetrics(ctx context.Context, meta interface{}, metric *TopologyMetricsRecord) error
+	RecordTopologyMetrics(ctx context.Context, meta interface{}, metric *TopologyMetricsRecord, pvToDelete string) error
 }
 
 // MeterCreator interface is used to create and provide Meter instances, which are used to report measurements
@@ -55,6 +55,7 @@ type MetricsWrapper struct {
 	VolumeQuotaMetrics             sync.Map
 	ClusterQuotaMetrics            sync.Map
 	TopologyMetrics                sync.Map
+	Callbacks                      sync.Map
 }
 
 // VolumeQuotaMetrics contains volume quota metrics data
@@ -478,7 +479,7 @@ func (mw *MetricsWrapper) initClusterPerformanceStatsMetrics(prefix string, id s
 }
 
 // RecordVolumeQuota will publish volume Quota metrics data
-func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interface{}, metric *TopologyMetricsRecord) error {
+func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interface{}, metric *TopologyMetricsRecord, pvToDelete string) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -510,7 +511,17 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 		return mw.TopologyMetrics.Load(metaID)
 	}
 
+	// Delete/Update pvToDelete if its deleted from cluster
 	testval, ok := loadMetricsFunc(metaID)
+	if pvToDelete != "" && metaID == pvToDelete {
+		fmt.Println("Found in TopologyMetrics to delete:", pvToDelete)
+		// mw.TopologyMetrics.Delete(pvToDelete)
+		// mw.Labels.Delete(pvToDelete)
+		// mw.Callbacks.Delete(pvToDelete)
+		mw.UnregisterTopologyMetric(metaID)
+	} else {
+		fmt.Println("Found in TopologyMetrics to not delete:", pvToDelete)
+	}
 
 	if ok {
 		fmt.Println("Found:", testval)
@@ -518,8 +529,16 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 		fmt.Println("Key not found")
 	}
 
+	// Unregister old callback if it exists
+	if val, ok := mw.Callbacks.Load(metaID); ok {
+		if reg, ok := val.(otelMetric.Registration); ok {
+			reg.Unregister()
+		}
+		mw.Callbacks.Delete(metaID)
+	}
+
 	initMetricsFunc := func(prefix string, metaID string, labels []attribute.KeyValue) (any, error) {
-		return mw.initTopologyMetrics(metaID, labels)
+		return mw.initTopologyMetrics(metaID, labels, pvToDelete)
 	}
 
 	metricsMapValue, err := updateLabels(prefix, metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
@@ -556,12 +575,13 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 
 	<-done
 	// _ = reg.Unregister()
+	mw.Callbacks.Store(metaID, reg)
 	fmt.Printf("registerCallback: %v\n", reg)
 
 	return nil
 }
 
-func (mw *MetricsWrapper) initTopologyMetrics(metaID string, labels []attribute.KeyValue) (*TopologyMetrics, error) {
+func (mw *MetricsWrapper) initTopologyMetrics(metaID string, labels []attribute.KeyValue, pvToDelete string) (*TopologyMetrics, error) {
 	pvcSize, err := mw.Meter.Float64ObservableUpDownCounter("karavi_topology_metrics")
 	if err != nil {
 		fmt.Printf("Error creating pvcSize metric: %v\n", err)
@@ -585,8 +605,26 @@ func (mw *MetricsWrapper) initTopologyMetrics(metaID string, labels []attribute.
 
 	fmt.Printf("PvcSize: %v\n", metrics.PvcSize)
 
+	if pvToDelete != "" {
+		fmt.Printf("Found in TopologyMetrics to delete in init: %v However do nothing", pvToDelete)
+		// mw.TopologyMetrics.Delete(pvToDelete)
+		// mw.Labels.Delete(pvToDelete)
+		// return nil, nil
+	}
+
 	mw.TopologyMetrics.Store(metaID, metrics)
 	mw.Labels.Store(metaID, labels)
 
 	return metrics, nil
+}
+
+func (mw *MetricsWrapper) UnregisterTopologyMetric(metaID string) {
+	if val, ok := mw.Callbacks.Load(metaID); ok {
+		if reg, ok := val.(otelMetric.Registration); ok {
+			reg.Unregister()
+		}
+		mw.Callbacks.Delete(metaID)
+	}
+	mw.TopologyMetrics.Delete(metaID)
+	mw.Labels.Delete(metaID)
 }
