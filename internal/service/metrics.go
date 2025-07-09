@@ -35,7 +35,7 @@ type MetricsRecorder interface {
 	RecordClusterQuota(ctx context.Context, meta interface{}, metric *ClusterQuotaRecord) error
 	RecordClusterCapacityStatsMetrics(ctx context.Context, metric *ClusterCapacityStatsMetricsRecord) error
 	RecordClusterPerformanceStatsMetrics(ctx context.Context, metric *ClusterPerformanceStatsMetricsRecord) error
-	RecordTopologyMetrics(ctx context.Context, meta interface{}, metric *TopologyMetricsRecord, pvToDelete string) error
+	RecordTopologyMetrics(ctx context.Context, meta interface{}, metric *TopologyMetricsRecord, listOfPVs []string) error
 }
 
 // MeterCreator interface is used to create and provide Meter instances, which are used to report measurements
@@ -118,7 +118,7 @@ func haveLabelsChanged(currentLabels []attribute.KeyValue, labels []attribute.Ke
 func updateLabels(prefix, metaID string, labels []attribute.KeyValue, mw *MetricsWrapper, loadMetrics loadMetricsFunc, initMetrics initMetricsFunc) (any, error) {
 	metricsMapValue, ok := loadMetrics(metaID)
 	if ok {
-		fmt.Printf("MetricsMapValue init in updatelabels: %v, ok: %v\n", metricsMapValue, ok)
+		fmt.Printf("MetricsMapValue init in updatelabels for volume: %v, ok: %v .............\n", metricsMapValue, ok)
 	} else {
 		fmt.Printf("There is no value for metaID %s in the metrics map\n", metaID)
 	}
@@ -479,7 +479,7 @@ func (mw *MetricsWrapper) initClusterPerformanceStatsMetrics(prefix string, id s
 }
 
 // RecordVolumeQuota will publish volume Quota metrics data
-func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interface{}, metric *TopologyMetricsRecord, pvToDelete string) error {
+func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interface{}, metric *TopologyMetricsRecord, listOfPVs []string) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -513,21 +513,35 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 
 	// Delete/Update pvToDelete if its deleted from cluster
 	testval, ok := loadMetricsFunc(metaID)
-	if pvToDelete != "" && metaID == pvToDelete {
-		fmt.Println("Found in TopologyMetrics to delete:", pvToDelete)
-		// mw.TopologyMetrics.Delete(pvToDelete)
-		// mw.Labels.Delete(pvToDelete)
-		// mw.Callbacks.Delete(pvToDelete)
-		mw.UnregisterTopologyMetric(metaID)
-	} else {
-		fmt.Println("Found in TopologyMetrics to not delete:", pvToDelete)
-	}
-
 	if ok {
-		fmt.Println("Found:", testval)
+		fmt.Println("Found:", testval.(*TopologyMetrics).PvcSize)
 	} else {
 		fmt.Println("Key not found")
 	}
+
+	// switch pvToDelete {
+	// case "Delete":
+	// 	fmt.Printf("Found in TopologyMetrics to delete: %v ......................\n", pvToDelete)
+	// 	metric.pvcSize = 0
+	// 	mw.UnregisterTopologyMetric(metaID)
+	// case "Update":
+	// 	fmt.Printf("Found in TopologyMetrics to not delete: %v ......................\n", pvToDelete)
+	// 	metric.pvcSize = 1
+	// 	// mw.UpdateValues(metaID, meta.(*TopologyMeta))
+	// default:
+	// 	fmt.Printf("No modification of existing pv or deletion .....................\n")
+	// }
+	// if pvToDelete == "Delete" {
+	// 	fmt.Println("Found in TopologyMetrics to delete:", pvToDelete)
+	// 	// mw.TopologyMetrics.Delete(pvToDelete)
+	// 	// mw.Labels.Delete(pvToDelete)
+	// 	// mw.Callbacks.Delete(pvToDelete)
+	// 	metric.pvcSize = 0
+	// 	mw.UnregisterTopologyMetric(metaID)
+	// } else if pvToDelete == "Update" {
+	// 	fmt.Println("Found in TopologyMetrics to not delete:", pvToDelete)
+	// 	metric.pvcSize = 1
+	// }
 
 	// Unregister old callback if it exists
 	if val, ok := mw.Callbacks.Load(metaID); ok {
@@ -538,7 +552,7 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 	}
 
 	initMetricsFunc := func(prefix string, metaID string, labels []attribute.KeyValue) (any, error) {
-		return mw.initTopologyMetrics(metaID, labels, pvToDelete)
+		return mw.initTopologyMetrics("", metaID, labels)
 	}
 
 	metricsMapValue, err := updateLabels(prefix, metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
@@ -548,26 +562,30 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 
 	fmt.Printf("labels: %v\n", labels)
 
-	// quotaSub := utils.UnitsConvert(metric.quotaSubscribed, utils.BYTES, utils.GB)
-	// hardQuotaRemSub := utils.UnitsConvert(metric.hardQuotaRemaining, utils.BYTES, utils.GB)
-
 	metrics := metricsMapValue.(*TopologyMetrics)
 	fmt.Printf("metrics        : %v\n", metrics == nil)
 
+	// if !contains(listOfPVs, metaID) {
+	// 	mw.UnregisterTopologyMetric(metaID)
+	// 	metrics.PvcSize = nil
+	// 	metric.pvcSize = 0
+	// 	// labels = nil
+
+	// }
+
 	done := make(chan struct{})
 	reg, err := mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
+
 		obs.ObserveFloat64(metrics.PvcSize, float64(metric.pvcSize), otelMetric.WithAttributes(labels...))
-		// obs.ObserveFloat64(metrics.HardQuotaRemaining, hardQuotaRemSub, otelMetric.WithAttributes(labels...))
-		// obs.ObserveFloat64(metrics.QuotaSubscribedPct, metric.quotaSubscribedPct, otelMetric.WithAttributes(labels...))
-		// obs.ObserveFloat64(metrics.HardQuotaRemainingPct, metric.hardQuotaRemainingPct, otelMetric.WithAttributes(labels...))
 		go func() {
 			done <- struct{}{}
 		}()
+
+		// <-done
+
+		// close(done)
 		return nil
 	},
-		// metrics.QuotaSubscribed,
-		// metrics.HardQuotaRemaining,
-		// metrics.QuotaSubscribedPct,
 		metrics.PvcSize)
 	if err != nil {
 		return err
@@ -576,12 +594,25 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 	<-done
 	// _ = reg.Unregister()
 	mw.Callbacks.Store(metaID, reg)
-	fmt.Printf("registerCallback: %v\n", reg)
+	// fmt.Printf("registerCallback: %v\n", reg)
+	// if !contains(listOfPVs, metaID) {
+	// 	fmt.Printf("List of PVs: %v\n", listOfPVs)
+	// 	mw.UnregisterTopologyMetric(metaID)
+	// 	// metrics.PvcSize = nil
+	// 	metric.pvcSize = 0
+	// }
+	fmt.Printf(" Deleted PV list in RecordTopologyMetrics: %v\n", listOfPVs)
+	if len(listOfPVs) > 0 {
+		for _, pv := range listOfPVs {
+			mw.UnregisterTopologyMetric(pv)
+		}
+	}
+	// labels = nil
 
 	return nil
 }
 
-func (mw *MetricsWrapper) initTopologyMetrics(metaID string, labels []attribute.KeyValue, pvToDelete string) (*TopologyMetrics, error) {
+func (mw *MetricsWrapper) initTopologyMetrics(prefix string, metaID string, labels []attribute.KeyValue) (*TopologyMetrics, error) {
 	pvcSize, err := mw.Meter.Float64ObservableUpDownCounter("karavi_topology_metrics")
 	if err != nil {
 		fmt.Printf("Error creating pvcSize metric: %v\n", err)
@@ -605,12 +636,12 @@ func (mw *MetricsWrapper) initTopologyMetrics(metaID string, labels []attribute.
 
 	fmt.Printf("PvcSize: %v\n", metrics.PvcSize)
 
-	if pvToDelete != "" {
-		fmt.Printf("Found in TopologyMetrics to delete in init: %v However do nothing", pvToDelete)
-		// mw.TopologyMetrics.Delete(pvToDelete)
-		// mw.Labels.Delete(pvToDelete)
-		// return nil, nil
-	}
+	// if pvToDelete != "" {
+	// 	fmt.Printf("The action: %v However do nothing ..................\n", pvToDelete)
+	// 	// mw.TopologyMetrics.Delete(pvToDelete)
+	// 	// mw.Labels.Delete(pvToDelete)
+	// 	// return nil, nil
+	// }
 
 	mw.TopologyMetrics.Store(metaID, metrics)
 	mw.Labels.Store(metaID, labels)
@@ -619,12 +650,47 @@ func (mw *MetricsWrapper) initTopologyMetrics(metaID string, labels []attribute.
 }
 
 func (mw *MetricsWrapper) UnregisterTopologyMetric(metaID string) {
+	fmt.Printf("Unregistering PV: %v\n", metaID)
 	if val, ok := mw.Callbacks.Load(metaID); ok {
+		fmt.Printf("reg value for metaID %s: %v\n", metaID, val)
 		if reg, ok := val.(otelMetric.Registration); ok {
+			fmt.Printf("Unregistering PVVVVVV: %v\n", metaID)
 			reg.Unregister()
 		}
 		mw.Callbacks.Delete(metaID)
 	}
+
+	// if metric, ok := mw.TopologyMetrics.Load(metaID); ok {
+	// 	if metrics, ok := metric.(*TopologyMetrics); ok {
+	// 		metrics.PvcSize = nil
+	// 	}
+
+	// }
 	mw.TopologyMetrics.Delete(metaID)
 	mw.Labels.Delete(metaID)
+}
+
+func (mw *MetricsWrapper) UpdateValues(metaID string, pv *TopologyMeta) {
+
+	if val, ok := mw.Labels.Load(metaID); ok {
+		if metrics, ok := val.(*TopologyMeta); ok {
+			metrics.ProvisionedSize = pv.ProvisionedSize
+			metrics.PersistentVolumeClaim = pv.PersistentVolumeClaim
+			metrics.PersistentVolumeStatus = pv.PersistentVolumeStatus
+
+			mw.Labels.Store(metaID, metrics)
+
+		}
+	}
+
+}
+
+func contains(s []string, str string) bool {
+	fmt.Printf("List of PVs: %v in contains method\n", s)
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+	return false
 }

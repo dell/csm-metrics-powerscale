@@ -84,6 +84,10 @@ var CurrentTopologyData []TopologyDataUpdate
 
 var DeleteTopologyData string
 
+// var PrevPVList map[string]bool
+var PrevPVList = make(map[string]bool)
+var CurrentPVList map[string]bool
+
 // VolumeFinder is used to find volume information in kubernetes
 //
 //go:generate mockgen -destination=mocks/volume_finder_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service VolumeFinder
@@ -715,6 +719,7 @@ func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 	start := time.Now()
 	defer s.timeSince(start, "ExportTopologyMetrics")
 	DeleteTopologyData = ""
+	AddPV := false
 
 	fmt.Printf("ExportTopologyMetrics starts\n")
 
@@ -734,61 +739,105 @@ func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 		return
 	}
 
-	if CurrentTopologyData == nil {
-		CurrentTopologyData = make([]TopologyDataUpdate, 0)
-		for _, pv := range pvs {
-			fmt.Printf("pv: %+v\n", pv)
-			topologyData := TopologyDataUpdate{
-				PersistentVolume:       pv.PersistentVolume,
-				ProvisionedSize:        pv.ProvisionedSize,
-				PersistentVolumeStatus: pv.PersistentVolumeStatus,
-				PersistentVolumeClaim:  pv.PersistentVolumeClaim,
-				VolumeClaimName:        pv.VolumeClaimName,
-			}
-			CurrentTopologyData = append(CurrentTopologyData, topologyData)
-			// CurrentTopologyData[i].PersistentVolume = pv.PersistentVolume
-			// CurrentTopologyData[i].ProvisionedSize = pv.ProvisionedSize
-			// CurrentTopologyData[i].PersistentVolumeStatus = pv.PersistentVolumeStatus
-			// CurrentTopologyData[i].PersistentVolumeClaim = pv.PersistentVolumeClaim
-			// CurrentTopologyData[i].VolumeClaimName = pv.VolumeClaimName
+	// PrevPVList = make(map[string]bool)
+	CurrentPVList = make(map[string]bool)
+
+	for _, pv := range pvs {
+
+		CurrentPVList[pv.PersistentVolume] = true
+
+	}
+
+	deletedPVs := make([]string, 0)
+
+	for pv := range PrevPVList {
+		if _, ok := CurrentPVList[pv]; !ok {
+			deletedPVs = append(deletedPVs, pv)
 		}
-	} else {
-		// for _, pv := range pvs {
-		// var found bool
+	}
 
-		// 	for j, currentData := range CurrentTopologyData {
+	fmt.Printf("PrevPVList: %v", PrevPVList)
+	fmt.Printf("CurrentPVList: %v", CurrentPVList)
 
-		// 		if currentData.PersistentVolume == pv.PersistentVolume && (CurrentTopologyData[j].ProvisionedSize != pv.ProvisionedSize || CurrentTopologyData[j].PersistentVolumeStatus != pv.PersistentVolumeStatus || CurrentTopologyData[j].PersistentVolumeClaim != pv.PersistentVolumeClaim ||
-		// 			CurrentTopologyData[j].VolumeClaimName != pv.VolumeClaimName) {
+	if len(deletedPVs) > 0 {
+		fmt.Println("Deleted PVs: ", deletedPVs)
+	}
 
-		// 			fmt.Printf("There has been a change to volume %v\n", pv.PersistentVolume)
-		// 		}
-		// 	}
-		// }
+	PrevPVList = make(map[string]bool)
+	for key, val := range CurrentPVList {
+		PrevPVList[key] = val
+	}
+	// PrevPVList = CurrentPVList
 
-		for _, pv := range pvs {
-			var found bool
-			for _, currentData := range CurrentTopologyData {
-				if currentData.PersistentVolume == pv.PersistentVolume {
-					found = true
-					break
+	if len(pvs) > len(CurrentTopologyData) {
+		AddPV = true
+	}
+
+	listOfPVs := []string{}
+
+	for _, pv := range pvs {
+		listOfPVs = append(listOfPVs, pv.PersistentVolume)
+	}
+	if !AddPV {
+		fmt.Printf("Check for Deletion/Update................\n")
+
+		if CurrentTopologyData == nil {
+			CurrentTopologyData = make([]TopologyDataUpdate, 0)
+			for _, pv := range pvs {
+				fmt.Printf("pv: %+v\n", pv)
+				topologyData := TopologyDataUpdate{
+					PersistentVolume:       pv.PersistentVolume,
+					ProvisionedSize:        pv.ProvisionedSize,
+					PersistentVolumeStatus: pv.PersistentVolumeStatus,
+					PersistentVolumeClaim:  pv.PersistentVolumeClaim,
+					VolumeClaimName:        pv.VolumeClaimName,
 				}
+				CurrentTopologyData = append(CurrentTopologyData, topologyData)
+				// CurrentTopologyData[i].PersistentVolume = pv.PersistentVolume
+				// CurrentTopologyData[i].ProvisionedSize = pv.ProvisionedSize
+				// CurrentTopologyData[i].PersistentVolumeStatus = pv.PersistentVolumeStatus
+				// CurrentTopologyData[i].PersistentVolumeClaim = pv.PersistentVolumeClaim
+				// CurrentTopologyData[i].VolumeClaimName = pv.VolumeClaimName
 			}
-			if found {
-				fmt.Printf("Volume %v is already present in CurrentTopologyData\n", pv.PersistentVolume)
-				fmt.Printf("Checking if there has been a change to volume %v\n", pv.PersistentVolume)
+		} else {
+			// for _, pv := range pvs {
+			// var found bool
+
+			// 	for j, currentData := range CurrentTopologyData {
+
+			// 		if currentData.PersistentVolume == pv.PersistentVolume && (CurrentTopologyData[j].ProvisionedSize != pv.ProvisionedSize || CurrentTopologyData[j].PersistentVolumeStatus != pv.PersistentVolumeStatus || CurrentTopologyData[j].PersistentVolumeClaim != pv.PersistentVolumeClaim ||
+			// 			CurrentTopologyData[j].VolumeClaimName != pv.VolumeClaimName) {
+
+			// 			fmt.Printf("There has been a change to volume %v\n", pv.PersistentVolume)
+			// 		}
+			// 	}
+			// }
+			for _, pv := range pvs {
+				var found bool
 				for _, currentData := range CurrentTopologyData {
-					if currentData.ProvisionedSize != pv.ProvisionedSize ||
-						currentData.PersistentVolumeStatus != pv.PersistentVolumeStatus ||
-						currentData.PersistentVolumeClaim != pv.PersistentVolumeClaim ||
-						currentData.VolumeClaimName != pv.VolumeClaimName {
-						DeleteTopologyData = pv.PersistentVolume
+					if currentData.PersistentVolume == pv.PersistentVolume {
+						found = true
+						break
 					}
 				}
+				if found {
+					fmt.Printf("Volume %v is already present in CurrentTopologyData\n", pv.PersistentVolume)
+					fmt.Printf("Checking if there has been a change to volume %v\n", pv.PersistentVolume)
+					for _, currentData := range CurrentTopologyData {
+						if currentData.ProvisionedSize != pv.ProvisionedSize ||
+							currentData.PersistentVolumeStatus != pv.PersistentVolumeStatus ||
+							currentData.PersistentVolumeClaim != pv.PersistentVolumeClaim ||
+							currentData.VolumeClaimName != pv.VolumeClaimName {
+							DeleteTopologyData = "Update"
+							fmt.Printf(" %v : %+v .......................\n", DeleteTopologyData, pv)
+						}
+					}
 
-			} else {
-				fmt.Printf("Volume %v is not present in CurrentTopologyData\n", pv.PersistentVolume)
-				DeleteTopologyData = pv.PersistentVolume
+				} else {
+					fmt.Printf("Volume %v is not present in CurrentTopologyData\n", pv.PersistentVolume)
+					DeleteTopologyData = "Delete"
+					fmt.Printf(" %v : %+v .......................\n", DeleteTopologyData, pv)
+				}
 			}
 		}
 	}
@@ -810,7 +859,7 @@ func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 	// var wg sync.WaitGroup
 	// wg.Add(2)
 	// go func() {
-	for range s.pushTopologyMetrics(ctx, s.gatherTopologyMetrics(ctx, s.volumeServer(ctx, pvs))) {
+	for range s.pushTopologyMetrics(ctx, s.gatherTopologyMetrics(ctx, s.volumeServer(ctx, pvs)), deletedPVs) {
 		// consume the channel until it is empty and closed
 	} // revive:disable-line:empty-block
 	// 	wg.Done()
@@ -838,14 +887,6 @@ func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
 	s.Logger.Info("Volume is: ", len(volumes))
 
 	go func() {
-		// storageClasses := make(map[string]v1.StorageClass)
-		// scs, err := s.StorageClassFinder.GetStorageClasses(ctx)
-		// if err != nil {
-		// 	s.Logger.WithError(err).Error("failed to get storage classes, skip")
-		// }
-		// for _, sc := range scs {
-		// 	storageClasses[sc.Name] = sc
-		// }
 
 		for volume := range volumes {
 			wg.Add(1)
@@ -860,24 +901,6 @@ func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
 					s.Logger.WithField("volume_handle", volume.VolumeHandle).Warn("unable to get VolumeID and ClusterID from volume handle")
 					return
 				}
-
-				// volumeMeta := &VolumeMeta{
-				// 	ID:                        volume.VolumeHandle,
-				// 	PersistentVolumeName:      volume.PersistentVolume,
-				// 	ClusterName:               clusterName,
-				// 	AccessZone:                accessZone,
-				// 	ExportID:                  exportID,
-				// 	StorageClass:              volume.StorageClass,
-				// 	Driver:                    volume.Driver,
-				// 	IsiPath:                   volume.IsiPath,
-				// 	PersistentVolumeClaimName: volume.VolumeClaimName,
-				// 	Namespace:                 volume.Namespace,
-				// }
-
-				// volumeID := volumeProperties[0]
-				// exportID := volumeProperties[1]
-				// accessZone := volumeProperties[2]
-				// clusterName := volumeProperties[3]
 
 				topologyMeta := &TopologyMeta{
 					Namespace:               volume.Namespace,
@@ -895,45 +918,12 @@ func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
 					CreatedTime:             volume.CreatedTime,
 				}
 
-				// if volumeMeta.IsiPath == "" {
-				// 	if sc, ok := storageClasses[volumeMeta.StorageClass]; ok {
-				// 		path := sc.Parameters["IsiPath"]
-				// 		s.Logger.WithFields(logrus.Fields{"volume_id": volumeMeta.ID, "storage_class": volumeMeta.StorageClass, "isiPath": path}).Info("setting storage_class_isiPath to volume_isiPath")
-				// 		volumeMeta.IsiPath = path
-				// 	}
-				// 	if volumeMeta.IsiPath == "" {
-				// 		s.Logger.WithFields(logrus.Fields{"volume_id": volumeMeta.ID, "storage_class": volumeMeta.StorageClass}).Warn("could not find a StorageClass for Volume, setting client_isiPath to volume_isiPath")
-				// 		volumeMeta.IsiPath, _ = s.getClientIsiPath(ctx, clusterName)
-				// 	}
-				// }
-
-				// path := volumeMeta.IsiPath + "/" + volumeID
-				// var volQuota goisilon.Quota
-				// for _, q := range cluster2Quotas[clusterName] {
-				// 	if q.Path == path && q.Type == DirectoryQuotaType {
-				// 		volQuota = q
-				// 		break
-				// 	}
-				// }
-				// if volQuota == nil {
-				// 	s.Logger.WithError(err).WithField("volume_id", volumeMeta.ID).Error("getting quota metrics")
-				// 	return
-				// }
-
 				pvcSize, err := convertToBytes(volume.ProvisionedSize)
 				if err != nil {
 					s.Logger.Debugf("err is: %v", err)
 					return
 				}
 				fmt.Printf("pvcSize *********** %v", pvcSize)
-				// hardQuotaRemaining := volQuota.Thresholds.Hard - volQuota.Usage.Logical
-
-				// subscribedQuotaPct := float64(0)
-				// hardQuotaRemainingPct := float64(0)
-				// if volQuota.Thresholds.Hard != 0 {
-				// 	subscribedQuotaPct = float64(subscribedQuota) * 100.0 / float64(volQuota.Thresholds.Hard)
-				// 	hardQuotaRemainingPct = float64(hardQuotaRemaining) * 100.0 / float64(volQuota.Thresholds.Hard)
-				// }
 
 				// test test ---------------
 
@@ -959,7 +949,7 @@ func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
 }
 
 // pushVolumeQuotaMetrics will push the provided channel of volume metrics to a data collector
-func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyMetrics <-chan *TopologyMetricsRecord) <-chan *TopologyMetricsRecord {
+func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyMetrics <-chan *TopologyMetricsRecord, listOfPVs []string) <-chan *TopologyMetricsRecord {
 	start := time.Now()
 	defer s.timeSince(start, "pushTopologyMetrics")
 	var wg sync.WaitGroup
@@ -970,7 +960,7 @@ func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyMet
 			wg.Add(1)
 			go func(metrics *TopologyMetricsRecord) {
 				defer wg.Done()
-				err := s.MetricsWrapper.RecordTopologyMetrics(ctx, metrics.topologyMeta, metrics, DeleteTopologyData)
+				err := s.MetricsWrapper.RecordTopologyMetrics(ctx, metrics.topologyMeta, metrics, listOfPVs)
 				if err != nil {
 					s.Logger.WithError(err).WithField("volume_id", metrics.topologyMeta.PersistentVolume).Error("recording topology metrics for volume")
 				} else {
@@ -1007,4 +997,21 @@ func convertToBytes(s string) (int64, error) {
 	bytes := int64(numFloat * 1024 * 1024 * 1024)
 	fmt.Printf("The pvc size in bytes is %d", bytes)
 	return bytes, nil
+}
+
+func findMissingStrings(listA, listB []string) []string {
+	var missingStrings []string
+	for _, str := range listA {
+		found := false
+		for _, strB := range listB {
+			if str == strB {
+				found = true
+				break
+			}
+		}
+		if !found {
+			missingStrings = append(missingStrings, str)
+		}
+	}
+	return missingStrings
 }
