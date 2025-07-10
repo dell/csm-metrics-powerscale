@@ -19,7 +19,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -71,20 +70,6 @@ type PowerScaleService struct {
 	StorageClassFinder       StorageClassFinder
 }
 
-type TopologyDataUpdate struct {
-	PersistentVolumeClaim  string
-	PersistentVolumeStatus string
-	VolumeClaimName        string
-	PersistentVolume       string
-	ProvisionedSize        string
-	VolumeHandle           string
-}
-
-var CurrentTopologyData []TopologyDataUpdate
-
-var DeleteTopologyData string
-
-// var PrevPVList map[string]bool
 var PrevPVList = make(map[string]bool)
 var CurrentPVList map[string]bool
 
@@ -718,20 +703,11 @@ func (s *PowerScaleService) pushClusterPerformanceStatsMetrics(ctx context.Conte
 func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 	start := time.Now()
 	defer s.timeSince(start, "ExportTopologyMetrics")
-	DeleteTopologyData = ""
-	AddPV := false
-
-	fmt.Printf("ExportTopologyMetrics starts\n")
 
 	if s.MetricsWrapper == nil {
 		s.Logger.Warn("no MetricsWrapper provided for getting ExportTopologyMetrics")
 		return
 	}
-
-	// if s.MaxPowerScaleConnections == 0 {
-	// 	s.Logger.Debug("Using DefaultMaxPowerScaleConnections")
-	// 	s.MaxPowerScaleConnections = DefaultMaxPowerScaleConnections
-	// }
 
 	pvs, err := s.VolumeFinder.GetPersistentVolumes(ctx)
 	if err != nil {
@@ -739,17 +715,12 @@ func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 		return
 	}
 
-	// PrevPVList = make(map[string]bool)
+	// Get list of deleted PV
 	CurrentPVList = make(map[string]bool)
-
 	for _, pv := range pvs {
-
 		CurrentPVList[pv.PersistentVolume] = true
-
 	}
-
 	deletedPVs := make([]string, 0)
-
 	for pv := range PrevPVList {
 		if _, ok := CurrentPVList[pv]; !ok {
 			deletedPVs = append(deletedPVs, pv)
@@ -769,110 +740,11 @@ func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 	}
 	// PrevPVList = CurrentPVList
 
-	if len(pvs) > len(CurrentTopologyData) {
-		AddPV = true
-	}
-
-	listOfPVs := []string{}
-
-	for _, pv := range pvs {
-		listOfPVs = append(listOfPVs, pv.PersistentVolume)
-	}
-	if !AddPV {
-		fmt.Printf("Check for Deletion/Update................\n")
-
-		if CurrentTopologyData == nil {
-			CurrentTopologyData = make([]TopologyDataUpdate, 0)
-			for _, pv := range pvs {
-				fmt.Printf("pv: %+v\n", pv)
-				topologyData := TopologyDataUpdate{
-					PersistentVolume:       pv.PersistentVolume,
-					ProvisionedSize:        pv.ProvisionedSize,
-					PersistentVolumeStatus: pv.PersistentVolumeStatus,
-					PersistentVolumeClaim:  pv.PersistentVolumeClaim,
-					VolumeClaimName:        pv.VolumeClaimName,
-				}
-				CurrentTopologyData = append(CurrentTopologyData, topologyData)
-				// CurrentTopologyData[i].PersistentVolume = pv.PersistentVolume
-				// CurrentTopologyData[i].ProvisionedSize = pv.ProvisionedSize
-				// CurrentTopologyData[i].PersistentVolumeStatus = pv.PersistentVolumeStatus
-				// CurrentTopologyData[i].PersistentVolumeClaim = pv.PersistentVolumeClaim
-				// CurrentTopologyData[i].VolumeClaimName = pv.VolumeClaimName
-			}
-		} else {
-			// for _, pv := range pvs {
-			// var found bool
-
-			// 	for j, currentData := range CurrentTopologyData {
-
-			// 		if currentData.PersistentVolume == pv.PersistentVolume && (CurrentTopologyData[j].ProvisionedSize != pv.ProvisionedSize || CurrentTopologyData[j].PersistentVolumeStatus != pv.PersistentVolumeStatus || CurrentTopologyData[j].PersistentVolumeClaim != pv.PersistentVolumeClaim ||
-			// 			CurrentTopologyData[j].VolumeClaimName != pv.VolumeClaimName) {
-
-			// 			fmt.Printf("There has been a change to volume %v\n", pv.PersistentVolume)
-			// 		}
-			// 	}
-			// }
-			for _, pv := range pvs {
-				var found bool
-				for _, currentData := range CurrentTopologyData {
-					if currentData.PersistentVolume == pv.PersistentVolume {
-						found = true
-						break
-					}
-				}
-				if found {
-					fmt.Printf("Volume %v is already present in CurrentTopologyData\n", pv.PersistentVolume)
-					fmt.Printf("Checking if there has been a change to volume %v\n", pv.PersistentVolume)
-					for _, currentData := range CurrentTopologyData {
-						if currentData.ProvisionedSize != pv.ProvisionedSize ||
-							currentData.PersistentVolumeStatus != pv.PersistentVolumeStatus ||
-							currentData.PersistentVolumeClaim != pv.PersistentVolumeClaim ||
-							currentData.VolumeClaimName != pv.VolumeClaimName {
-							DeleteTopologyData = "Update"
-							fmt.Printf(" %v : %+v .......................\n", DeleteTopologyData, pv)
-						}
-					}
-
-				} else {
-					fmt.Printf("Volume %v is not present in CurrentTopologyData\n", pv.PersistentVolume)
-					DeleteTopologyData = "Delete"
-					fmt.Printf(" %v : %+v .......................\n", DeleteTopologyData, pv)
-				}
-			}
-		}
-	}
-
-	// Verify if data is deleted
-
 	fmt.Printf("*************************************\npvs: %+v\n", pvs)
 
-	// cluster2Quotas := make(map[string]goisilon.QuotaList)
-	// for clusterName, client := range s.PowerScaleClients {
-	// 	quotaList, err := client.GetAllQuotas(ctx)
-	// 	if err != nil {
-	// 		s.Logger.WithError(err).WithField("cluster_name", clusterName).Error("getting quotas")
-	// 		continue
-	// 	}
-	// 	cluster2Quotas[clusterName] = quotaList
-	// }
-
-	// var wg sync.WaitGroup
-	// wg.Add(2)
-	// go func() {
 	for range s.pushTopologyMetrics(ctx, s.gatherTopologyMetrics(ctx, s.volumeServer(ctx, pvs)), deletedPVs) {
 		// consume the channel until it is empty and closed
 	} // revive:disable-line:empty-block
-	// 	wg.Done()
-	// }()
-
-	// go func() {
-	// 	for range s.pushClusterQuotaMetrics(ctx, s.gatherClusterQuotaMetrics(ctx, cluster2Quotas)) {
-	// 		// consume the channel until it is empty and closed
-	// 	} // revive:disable-line:empty-block
-	// 	wg.Done()
-	// }()
-
-	// wg.Wait()
 }
 
 func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
@@ -883,14 +755,12 @@ func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
 
 	ch := make(chan *TopologyMetricsRecord)
 	var wg sync.WaitGroup
-	// sem := make(chan struct{}, s.MaxPowerScaleConnections)
 	s.Logger.Info("Volume is: ", len(volumes))
 
 	go func() {
 
 		for volume := range volumes {
 			wg.Add(1)
-			// sem <- struct{}{}
 			go func(volume k8s.VolumeInfo) {
 				defer wg.Done()
 
@@ -918,16 +788,14 @@ func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
 					CreatedTime:             volume.CreatedTime,
 				}
 
-				pvcSize, err := convertToBytes(volume.ProvisionedSize)
-				if err != nil {
-					s.Logger.Debugf("err is: %v", err)
-					return
-				}
-				fmt.Printf("pvcSize *********** %v", pvcSize)
+				// pvcSize, err := convertToBytes(volume.ProvisionedSize)
+				// if err != nil {
+				// 	s.Logger.Debugf("err is: %v", err)
+				// 	return
+				// }
+				// fmt.Printf("pvcSize *********** %v", pvcSize)
 
-				// test test ---------------
-
-				pvcSize = 1
+				pvcSize := int64(1)
 
 				metric := &TopologyMetricsRecord{
 					topologyMeta: topologyMeta,
@@ -973,45 +841,5 @@ func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyMet
 		close(ch)
 	}()
 
-	// select {
-	// case <-ctx.Done():
-	// 	fmt.Printf("Context timed out, closing channel\n")
-	// 	// Context timed out, close channel
-	// 	close(ch)
-	// }
-
 	return ch
-}
-
-func convertToBytes(s string) (int64, error) {
-
-	fmt.Printf("The pvc size I got is %s", s)
-	// Remove the unit from the string
-	num := strings.TrimSuffix(s, "Gi")
-	// Convert the number to a float64
-	numFloat, err := strconv.ParseFloat(num, 64)
-	if err != nil {
-		return 0, err
-	}
-	// Convert to bytes (1 GiB = 1024 * 1024 * 1024 bytes)
-	bytes := int64(numFloat * 1024 * 1024 * 1024)
-	fmt.Printf("The pvc size in bytes is %d", bytes)
-	return bytes, nil
-}
-
-func findMissingStrings(listA, listB []string) []string {
-	var missingStrings []string
-	for _, str := range listA {
-		found := false
-		for _, strB := range listB {
-			if str == strB {
-				found = true
-				break
-			}
-		}
-		if !found {
-			missingStrings = append(missingStrings, str)
-		}
-	}
-	return missingStrings
 }
