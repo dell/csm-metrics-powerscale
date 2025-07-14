@@ -234,6 +234,14 @@ func updateMetricsEnabled(config *entrypoint.Config, logger *logrus.Logger) {
 	}
 	config.PerformanceMetricsEnabled = performanceMetricsEnabled
 	logger.WithField("performance_metrics_enabled", performanceMetricsEnabled).Debug("setting performance metrics enabled")
+
+	topologyMetricsEnabled := true
+	topologyMetricsEnabledValue := viper.GetString("POWERSCALE_TOPOLOGY_METRICS_ENABLED")
+	if topologyMetricsEnabledValue == "false" {
+		topologyMetricsEnabled = false
+	}
+	config.TopologyMetricsEnabled = topologyMetricsEnabled
+	logger.WithField("topology_metrics_enabled", topologyMetricsEnabled).Debug("setting topology metrics enabled")
 }
 
 func updateTickIntervals(config *entrypoint.Config, logger *logrus.Logger) {
@@ -272,6 +280,18 @@ func updateTickIntervals(config *entrypoint.Config, logger *logrus.Logger) {
 	}
 	config.ClusterPerformanceTickInterval = clusterPerformanceTickInterval
 	logger.WithField("cluster_performance_tick_interval", fmt.Sprintf("%v", clusterPerformanceTickInterval)).Debug("setting cluster performance tick interval")
+
+	topologyMetricsTickInterval := defaultTickInterval
+	topogyMetricsPollFrequencySeconds := viper.GetString("POWERSCALE_TOPOLOGY_METRICS_POLL_FREQUENCY")
+	if topogyMetricsPollFrequencySeconds != "" {
+		numSeconds, err := strconv.Atoi(topogyMetricsPollFrequencySeconds)
+		if err != nil {
+			logger.WithError(err).Fatal("POWERSCALE_TOPOLOGY_METRICS_POLL_FREQUENCY was not set to a valid number")
+		}
+		topologyMetricsTickInterval = time.Duration(numSeconds) * time.Second
+	}
+	config.TopologyMetricsTickInterval = topologyMetricsTickInterval
+	logger.WithField("cluster_performance_tick_interval", fmt.Sprintf("%v", topologyMetricsTickInterval)).Debug("setting cluster performance tick interval")
 }
 
 func updateService(pscaleSvc *service.PowerScaleService, logger *logrus.Logger) {
