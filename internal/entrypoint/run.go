@@ -148,7 +148,6 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 				continue
 			}
 			powerScaleSvc.ExportQuotaMetrics(ctx)
-			// powerScaleSvc.ExportTopologyMetrics(ctx)
 		case <-topologyMetricsTicker.C:
 			if !config.LeaderElector.IsLeader() {
 				logger.Info("not leader pod to collect metrics")

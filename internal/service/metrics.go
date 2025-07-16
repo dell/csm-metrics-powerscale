@@ -54,7 +54,6 @@ type MetricsWrapper struct {
 	VolumeQuotaMetrics             sync.Map
 	ClusterQuotaMetrics            sync.Map
 	TopologyMetrics                sync.Map
-	Callbacks                      sync.Map
 }
 
 // VolumeQuotaMetrics contains volume quota metrics data
@@ -65,6 +64,7 @@ type VolumeQuotaMetrics struct {
 	HardQuotaRemainingPct otelMetric.Float64ObservableUpDownCounter
 }
 
+// TopologyMetrics contains topology metrics when PV is available on cluster
 type TopologyMetrics struct {
 	PvAvailable otelMetric.Float64ObservableUpDownCounter
 }
@@ -462,7 +462,7 @@ func (mw *MetricsWrapper) initClusterPerformanceStatsMetrics(prefix string, id s
 	return metrics, nil
 }
 
-// RecordVolumeQuota will publish volume Quota metrics data
+// RecordTopologyMetrics will publish topology data to Otel
 func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interface{}, metric *TopologyMetricsRecord) error {
 	var prefix string
 	var metaID string
