@@ -464,7 +464,6 @@ func (mw *MetricsWrapper) initClusterPerformanceStatsMetrics(prefix string, id s
 
 // RecordTopologyMetrics will publish topology data to Otel
 func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interface{}, metric *TopologyMetricsRecord) error {
-	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
 
@@ -494,11 +493,11 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 		return mw.TopologyMetrics.Load(metaID)
 	}
 
-	initMetricsFunc := func(prefix string, metaID string, labels []attribute.KeyValue) (any, error) {
-		return mw.initTopologyMetrics("", metaID, labels)
+	initMetricsFunc := func(_, metaID string, labels []attribute.KeyValue) (any, error) {
+		return mw.initTopologyMetrics(metaID, labels)
 	}
 
-	metricsMapValue, err := updateLabels(prefix, metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
+	metricsMapValue, err := updateLabels("", metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
 	if err != nil {
 		return err
 	}
@@ -526,7 +525,7 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 	return nil
 }
 
-func (mw *MetricsWrapper) initTopologyMetrics(prefix string, metaID string, labels []attribute.KeyValue) (*TopologyMetrics, error) {
+func (mw *MetricsWrapper) initTopologyMetrics(metaID string, labels []attribute.KeyValue) (*TopologyMetrics, error) {
 	pvAvailable, _ := mw.Meter.Float64ObservableUpDownCounter("karavi_topology_metrics")
 
 	metrics := &TopologyMetrics{

@@ -70,9 +70,6 @@ type PowerScaleService struct {
 	StorageClassFinder       StorageClassFinder
 }
 
-var PrevPVList = make(map[string]bool)
-var CurrentPVList map[string]bool
-
 // VolumeFinder is used to find volume information in kubernetes
 //
 //go:generate mockgen -destination=mocks/volume_finder_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service VolumeFinder
@@ -715,15 +712,13 @@ func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 		return
 	}
 
-	for range s.pushTopologyMetrics(ctx, s.gatherTopologyMetrics(ctx, s.volumeServer(ctx, pvs))) {
+	for range s.pushTopologyMetrics(ctx, s.gatherTopologyMetrics(s.volumeServer(ctx, pvs))) {
 		// consume the channel until it is empty and closed
 	} // revive:disable-line:empty-block
 }
 
 // gatherTopologyMetrics will return a channel of topology metrics
-func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
-	volumes <-chan k8s.VolumeInfo,
-) <-chan *TopologyMetricsRecord {
+func (s *PowerScaleService) gatherTopologyMetrics(volumes <-chan k8s.VolumeInfo) <-chan *TopologyMetricsRecord {
 	start := time.Now()
 	defer s.timeSince(start, "gatherTopologyMetrics")
 
