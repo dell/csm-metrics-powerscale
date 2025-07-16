@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -484,6 +485,73 @@ func Test_ExportClusterMetrics(t *testing.T) {
 			service.ExportClusterCapacityMetrics(context.Background())
 			service.ExportClusterPerformanceMetrics(context.Background())
 			ctrl.Finish()
+		})
+	}
+}
+
+func Test_ExportTopologyMetrics(t *testing.T) {
+	tests := map[string]func(t *testing.T) (service.PowerScaleService, *gomock.Controller){
+		"success": func(t *testing.T) (service.PowerScaleService, *gomock.Controller) {
+			ctrl := gomock.NewController(t)
+			metrics := mocks.NewMockMetricsRecorder(ctrl)
+			volFinder := mocks.NewMockVolumeFinder(ctrl)
+
+			volInfo := k8s.VolumeInfo{
+				Namespace:              "test-namespace",
+				PersistentVolumeClaim:  "test-pvc",
+				PersistentVolumeStatus: "Bound",
+				VolumeClaimName:        "test-pvc",
+				PersistentVolume:       "test-pv",
+				StorageClass:           "test-sc",
+				Driver:                 "test-driver",
+				ProvisionedSize:        "1Gi",
+				VolumeHandle:           "test-handle",
+				IsiPath:                "/test/path",
+			}
+
+			metrics.EXPECT().RecordTopologyMetrics(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+			volFinder.EXPECT().GetPersistentVolumes(gomock.Any()).Return([]k8s.VolumeInfo{volInfo}, nil).Times(1)
+
+			service := service.PowerScaleService{
+				MetricsWrapper: metrics,
+				VolumeFinder:   volFinder,
+			}
+			return service, ctrl
+		},
+		"metrics not pushed if metrics wrapper is nil": func(t *testing.T) (service.PowerScaleService, *gomock.Controller) {
+			ctrl := gomock.NewController(t)
+			volFinder := mocks.NewMockVolumeFinder(ctrl)
+
+			volFinder.EXPECT().GetPersistentVolumes(gomock.Any()).Return([]k8s.VolumeInfo{}, nil).Times(0)
+
+			service := service.PowerScaleService{
+				MetricsWrapper: nil,
+				VolumeFinder:   volFinder,
+			}
+			return service, ctrl
+		},
+		"error getting persistent volumes": func(t *testing.T) (service.PowerScaleService, *gomock.Controller) {
+			ctrl := gomock.NewController(t)
+			metrics := mocks.NewMockMetricsRecorder(ctrl)
+			volFinder := mocks.NewMockVolumeFinder(ctrl)
+
+			volFinder.EXPECT().GetPersistentVolumes(gomock.Any()).Return([]k8s.VolumeInfo{}, fmt.Errorf("test error")).Times(1)
+
+			service := service.PowerScaleService{
+				MetricsWrapper: metrics,
+				VolumeFinder:   volFinder,
+			}
+			return service, ctrl
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			service, ctrl := tc(t)
+			service.Logger = logrus.New()
+			defer ctrl.Finish()
+
+			service.ExportTopologyMetrics(context.Background())
 		})
 	}
 }

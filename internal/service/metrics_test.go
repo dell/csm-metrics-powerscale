@@ -367,3 +367,38 @@ func TestMetricsWrapper_RecordClusterQuota_UpdateLabels(t *testing.T) {
 		})
 	}
 }
+
+func TestRecordTopologyMetrics(t *testing.T) {
+	mw := &service.MetricsWrapper{
+		Meter: otel.Meter("powerscale-test"),
+	}
+	tests := []struct {
+		name    string
+		meta    interface{}
+		metric  *service.TopologyMetricsRecord
+		wantErr bool
+	}{
+		{
+			name: "success",
+			meta: &service.TopologyMeta{
+				PersistentVolume: "test-pv",
+			},
+			metric:  &service.TopologyMetricsRecord{},
+			wantErr: false,
+		},
+		{
+			name:    "unknown meta data type",
+			meta:    "unknown",
+			metric:  &service.TopologyMetricsRecord{},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := mw.RecordTopologyMetrics(context.Background(), tt.meta, tt.metric); (err != nil) != tt.wantErr {
+				t.Errorf("RecordTopologyMetrics() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}

@@ -115,8 +115,6 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 	TopologyMetricsTickInterval := config.TopologyMetricsTickInterval
 	topologyMetricsTicker := time.NewTicker(TopologyMetricsTickInterval)
 
-	fmt.Printf("TopologyMetricsTickInterval: %v\n", TopologyMetricsTickInterval)
-
 	for {
 		select {
 		case <-clusterCapacityTicker.C:

@@ -19,7 +19,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/dell/csm-metrics-powerscale/internal/utils"
@@ -35,7 +34,7 @@ type MetricsRecorder interface {
 	RecordClusterQuota(ctx context.Context, meta interface{}, metric *ClusterQuotaRecord) error
 	RecordClusterCapacityStatsMetrics(ctx context.Context, metric *ClusterCapacityStatsMetricsRecord) error
 	RecordClusterPerformanceStatsMetrics(ctx context.Context, metric *ClusterPerformanceStatsMetricsRecord) error
-	RecordTopologyMetrics(ctx context.Context, meta interface{}, metric *TopologyMetricsRecord, listOfPVs []string) error
+	RecordTopologyMetrics(ctx context.Context, meta interface{}, metric *TopologyMetricsRecord) error
 }
 
 // MeterCreator interface is used to create and provide Meter instances, which are used to report measurements
@@ -67,8 +66,7 @@ type VolumeQuotaMetrics struct {
 }
 
 type TopologyMetrics struct {
-	PvcSize otelMetric.Float64ObservableUpDownCounter
-	Values  sync.Map
+	PvAvailable otelMetric.Float64ObservableUpDownCounter
 }
 
 // ClusterQuotaMetrics contains quota capacity in all directories
@@ -117,11 +115,6 @@ func haveLabelsChanged(currentLabels []attribute.KeyValue, labels []attribute.Ke
 
 func updateLabels(prefix, metaID string, labels []attribute.KeyValue, mw *MetricsWrapper, loadMetrics loadMetricsFunc, initMetrics initMetricsFunc) (any, error) {
 	metricsMapValue, ok := loadMetrics(metaID)
-	if ok {
-		fmt.Printf("MetricsMapValue init in updatelabels for volume: %v, ok: %v .............\n", metricsMapValue, ok)
-	} else {
-		fmt.Printf("There is no value for metaID %s in the metrics map\n", metaID)
-	}
 
 	if !ok {
 		newMetrics, err := initMetrics(prefix, metaID, labels)
@@ -146,8 +139,6 @@ func updateLabels(prefix, metaID string, labels []attribute.KeyValue, mw *Metric
 
 	done := make(chan struct{})
 	defer close(done)
-
-	fmt.Printf("MetricsMapValue later in updatelabels: %v, ok: %v\n", metricsMapValue, ok)
 
 	return metricsMapValue, nil
 }
@@ -268,13 +259,6 @@ func (mw *MetricsWrapper) RecordVolumeQuota(_ context.Context, meta interface{},
 
 	loadMetricsFunc := func(metaID string) (any, bool) {
 		return mw.VolumeQuotaMetrics.Load(metaID)
-	}
-	testval, ok := loadMetricsFunc(metaID)
-
-	if ok {
-		fmt.Println("Found in VolumeQuota:", testval)
-	} else {
-		fmt.Println("Key not found for VolumeQuota")
 	}
 
 	initMetricsFunc := func(prefix string, metaID string, labels []attribute.KeyValue) (any, error) {
@@ -479,7 +463,7 @@ func (mw *MetricsWrapper) initClusterPerformanceStatsMetrics(prefix string, id s
 }
 
 // RecordVolumeQuota will publish volume Quota metrics data
-func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interface{}, metric *TopologyMetricsRecord, listOfPVs []string) error {
+func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interface{}, metric *TopologyMetricsRecord) error {
 	var prefix string
 	var metaID string
 	var labels []attribute.KeyValue
@@ -487,7 +471,6 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 	switch v := meta.(type) {
 	case *TopologyMeta:
 		metaID = v.PersistentVolume
-		fmt.Printf("value of v is: %v\n", v)
 		labels = []attribute.KeyValue{
 			attribute.String("PersistentVolumeClaim", v.PersistentVolumeClaim),
 			attribute.String("Driver", v.Driver),
@@ -511,14 +494,6 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 		return mw.TopologyMetrics.Load(metaID)
 	}
 
-	// Unregister old callback if it exists
-	if val, ok := mw.Callbacks.Load(metaID); ok {
-		if reg, ok := val.(otelMetric.Registration); ok {
-			reg.Unregister()
-		}
-		mw.Callbacks.Delete(metaID)
-	}
-
 	initMetricsFunc := func(prefix string, metaID string, labels []attribute.KeyValue) (any, error) {
 		return mw.initTopologyMetrics("", metaID, labels)
 	}
@@ -533,78 +508,33 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 	done := make(chan struct{})
 	reg, err := mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
 
-		obs.ObserveFloat64(metrics.PvcSize, float64(metric.pvcSize), otelMetric.WithAttributes(labels...))
+		obs.ObserveFloat64(metrics.PvAvailable, float64(metric.pvAvailable), otelMetric.WithAttributes(labels...))
 		go func() {
 			done <- struct{}{}
 		}()
 		return nil
 	},
-		metrics.PvcSize)
+		metrics.PvAvailable)
 	if err != nil {
 		return err
 	}
 
 	<-done
 
-	mw.Callbacks.Store(metaID, reg)
-
-	fmt.Printf(" Deleted PV list in RecordTopologyMetrics: %v\n", listOfPVs)
-	if len(listOfPVs) > 0 {
-		for _, pv := range listOfPVs {
-			mw.UnregisterTopologyMetric(pv)
-		}
-	}
-	// labels = nil
+	_ = reg.Unregister()
 
 	return nil
 }
 
 func (mw *MetricsWrapper) initTopologyMetrics(prefix string, metaID string, labels []attribute.KeyValue) (*TopologyMetrics, error) {
-	pvcSize, err := mw.Meter.Float64ObservableUpDownCounter("karavi_topology_metrics")
-	if err != nil {
-		fmt.Printf("Error creating pvcSize metric: %v\n", err)
-	} else {
-		fmt.Printf("pvcSize metric created successfully: %v\n", pvcSize)
-	}
+	pvAvailable, _ := mw.Meter.Float64ObservableUpDownCounter("karavi_topology_metrics")
 
 	metrics := &TopologyMetrics{
-		PvcSize: pvcSize,
+		PvAvailable: pvAvailable,
 	}
-
-	fmt.Printf("PvcSize: %v\n", metrics.PvcSize)
 
 	mw.TopologyMetrics.Store(metaID, metrics)
 	mw.Labels.Store(metaID, labels)
 
 	return metrics, nil
-}
-
-func (mw *MetricsWrapper) UnregisterTopologyMetric(metaID string) {
-	fmt.Printf("Unregistering PV: %v\n", metaID)
-	if val, ok := mw.Callbacks.Load(metaID); ok {
-		fmt.Printf("reg value for metaID %s: %v\n", metaID, val)
-		if reg, ok := val.(otelMetric.Registration); ok {
-			fmt.Printf("Unregistering PVVVVVV: %v\n", metaID)
-			reg.Unregister()
-		}
-		mw.Callbacks.Delete(metaID)
-	}
-
-	mw.TopologyMetrics.Delete(metaID)
-	mw.Labels.Delete(metaID)
-}
-
-func (mw *MetricsWrapper) UpdateValues(metaID string, pv *TopologyMeta) {
-
-	if val, ok := mw.Labels.Load(metaID); ok {
-		if metrics, ok := val.(*TopologyMeta); ok {
-			metrics.ProvisionedSize = pv.ProvisionedSize
-			metrics.PersistentVolumeClaim = pv.PersistentVolumeClaim
-			metrics.PersistentVolumeStatus = pv.PersistentVolumeStatus
-
-			mw.Labels.Store(metaID, metrics)
-
-		}
-	}
-
 }

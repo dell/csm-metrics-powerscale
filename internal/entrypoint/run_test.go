@@ -56,6 +56,7 @@ func Test_Run(t *testing.T) {
 			svc.EXPECT().ExportQuotaMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterCapacityMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterPerformanceMetrics(gomock.Any()).AnyTimes()
+			svc.EXPECT().ExportTopologyMetrics(gomock.Any()).AnyTimes()
 
 			return false, config, e, svc, prevConfigValidationFunc, ctrl, false
 		},
@@ -71,6 +72,7 @@ func Test_Run(t *testing.T) {
 				ClusterCapacityTickInterval:    1 * time.Second,
 				ClusterPerformanceTickInterval: 5 * time.Second,
 				QuotaCapacityTickInterval:      5 * time.Second,
+				TopologyMetricsTickInterval:    5 * time.Second,
 			}
 			prevConfigValidationFunc := entrypoint.ConfigValidatorFunc
 			e := exportermocks.NewMockOtlexporter(ctrl)
@@ -90,6 +92,7 @@ func Test_Run(t *testing.T) {
 				ClusterCapacityTickInterval:    5 * time.Second,
 				ClusterPerformanceTickInterval: 1 * time.Second,
 				QuotaCapacityTickInterval:      5 * time.Second,
+				TopologyMetricsTickInterval:    5 * time.Second,
 			}
 			prevConfigValidationFunc := entrypoint.ConfigValidatorFunc
 			e := exportermocks.NewMockOtlexporter(ctrl)
@@ -109,6 +112,27 @@ func Test_Run(t *testing.T) {
 				ClusterCapacityTickInterval:    5 * time.Second,
 				ClusterPerformanceTickInterval: 5 * time.Second,
 				QuotaCapacityTickInterval:      1 * time.Second,
+				TopologyMetricsTickInterval:    5 * time.Second,
+			}
+			prevConfigValidationFunc := entrypoint.ConfigValidatorFunc
+			e := exportermocks.NewMockOtlexporter(ctrl)
+			svc := mocks.NewMockService(ctrl)
+
+			return true, config, e, svc, prevConfigValidationFunc, ctrl, true
+		},
+		"error with invalid topology metrics ticker interval": func(*testing.T) (bool, *entrypoint.Config, otlexporters.Otlexporter, pScaleService.Service, func(*entrypoint.Config) error, *gomock.Controller, bool) {
+			ctrl := gomock.NewController(t)
+			leaderElector := mocks.NewMockLeaderElector(ctrl)
+			clients := make(map[string]pScaleService.PowerScaleClient)
+			clients["test"] = mocks.NewMockPowerScaleClient(ctrl)
+			config := &entrypoint.Config{
+				CapacityMetricsEnabled:         true,
+				PerformanceMetricsEnabled:      true,
+				LeaderElector:                  leaderElector,
+				ClusterCapacityTickInterval:    5 * time.Second,
+				ClusterPerformanceTickInterval: 5 * time.Second,
+				QuotaCapacityTickInterval:      5 * time.Second,
+				TopologyMetricsTickInterval:    1 * time.Second,
 			}
 			prevConfigValidationFunc := entrypoint.ConfigValidatorFunc
 			e := exportermocks.NewMockOtlexporter(ctrl)
@@ -130,6 +154,7 @@ func Test_Run(t *testing.T) {
 				ClusterCapacityTickInterval:    100 * time.Millisecond,
 				ClusterPerformanceTickInterval: 100 * time.Millisecond,
 				QuotaCapacityTickInterval:      100 * time.Millisecond,
+				TopologyMetricsTickInterval:    100 * time.Millisecond,
 			}
 			prevConfigValidationFunc := entrypoint.ConfigValidatorFunc
 			entrypoint.ConfigValidatorFunc = noCheckConfig
@@ -142,6 +167,7 @@ func Test_Run(t *testing.T) {
 			svc.EXPECT().ExportQuotaMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterCapacityMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterPerformanceMetrics(gomock.Any()).AnyTimes()
+			svc.EXPECT().ExportTopologyMetrics(gomock.Any()).AnyTimes()
 
 			return false, config, e, svc, prevConfigValidationFunc, ctrl, true
 		},
@@ -159,6 +185,7 @@ func Test_Run(t *testing.T) {
 				ClusterCapacityTickInterval:    100 * time.Millisecond,
 				ClusterPerformanceTickInterval: 100 * time.Millisecond,
 				QuotaCapacityTickInterval:      100 * time.Millisecond,
+				TopologyMetricsTickInterval:    100 * time.Millisecond,
 			}
 			prevConfigValidationFunc := entrypoint.ConfigValidatorFunc
 			entrypoint.ConfigValidatorFunc = noCheckConfig
@@ -171,6 +198,7 @@ func Test_Run(t *testing.T) {
 			svc.EXPECT().ExportQuotaMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterCapacityMetrics(gomock.Any()).AnyTimes()
 			svc.EXPECT().ExportClusterPerformanceMetrics(gomock.Any()).AnyTimes()
+			svc.EXPECT().ExportTopologyMetrics(gomock.Any()).AnyTimes()
 			return false, config, e, svc, prevConfigValidationFunc, ctrl, true
 		},
 		"error nil config": func(*testing.T) (bool, *entrypoint.Config, otlexporters.Otlexporter, pScaleService.Service, func(*entrypoint.Config) error, *gomock.Controller, bool) {
@@ -287,6 +315,7 @@ func Test_Run(t *testing.T) {
 					config.ClusterCapacityTickInterval = 100 * time.Millisecond
 					config.ClusterPerformanceTickInterval = 100 * time.Millisecond
 					config.QuotaCapacityTickInterval = 100 * time.Millisecond
+					config.TopologyMetricsTickInterval = 100 * time.Millisecond
 				}
 			}
 			err := entrypoint.Run(ctx, config, exporter, svc)

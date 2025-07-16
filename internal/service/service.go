@@ -122,7 +122,6 @@ type VolumeQuotaMetricsRecord struct {
 	hardQuotaRemaining    int64
 	quotaSubscribedPct    float64
 	hardQuotaRemainingPct float64
-	// pvcSize               int64
 }
 
 // ClusterQuotaRecord used for holding output of the Volume stat query results
@@ -134,7 +133,7 @@ type ClusterQuotaRecord struct {
 
 type TopologyMetricsRecord struct {
 	topologyMeta *TopologyMeta
-	pvcSize      int64
+	pvAvailable  int64
 }
 
 // ExportQuotaMetrics records quota metrics for the given list of Volumes
@@ -700,6 +699,7 @@ func (s *PowerScaleService) pushClusterPerformanceStatsMetrics(ctx context.Conte
 	return ch
 }
 
+// ExportTopologyMetrics will export topology metrics
 func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 	start := time.Now()
 	defer s.timeSince(start, "ExportTopologyMetrics")
@@ -715,38 +715,12 @@ func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 		return
 	}
 
-	// Get list of deleted PV
-	CurrentPVList = make(map[string]bool)
-	for _, pv := range pvs {
-		CurrentPVList[pv.PersistentVolume] = true
-	}
-	deletedPVs := make([]string, 0)
-	for pv := range PrevPVList {
-		if _, ok := CurrentPVList[pv]; !ok {
-			deletedPVs = append(deletedPVs, pv)
-		}
-	}
-
-	fmt.Printf("PrevPVList: %v", PrevPVList)
-	fmt.Printf("CurrentPVList: %v", CurrentPVList)
-
-	if len(deletedPVs) > 0 {
-		fmt.Println("Deleted PVs: ", deletedPVs)
-	}
-
-	PrevPVList = make(map[string]bool)
-	for key, val := range CurrentPVList {
-		PrevPVList[key] = val
-	}
-	// PrevPVList = CurrentPVList
-
-	fmt.Printf("*************************************\npvs: %+v\n", pvs)
-
-	for range s.pushTopologyMetrics(ctx, s.gatherTopologyMetrics(ctx, s.volumeServer(ctx, pvs)), deletedPVs) {
+	for range s.pushTopologyMetrics(ctx, s.gatherTopologyMetrics(ctx, s.volumeServer(ctx, pvs))) {
 		// consume the channel until it is empty and closed
 	} // revive:disable-line:empty-block
 }
 
+// gatherTopologyMetrics will return a channel of topology metrics
 func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
 	volumes <-chan k8s.VolumeInfo,
 ) <-chan *TopologyMetricsRecord {
@@ -755,7 +729,6 @@ func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
 
 	ch := make(chan *TopologyMetricsRecord)
 	var wg sync.WaitGroup
-	s.Logger.Info("Volume is: ", len(volumes))
 
 	go func() {
 
@@ -788,23 +761,12 @@ func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
 					CreatedTime:             volume.CreatedTime,
 				}
 
-				// pvcSize, err := convertToBytes(volume.ProvisionedSize)
-				// if err != nil {
-				// 	s.Logger.Debugf("err is: %v", err)
-				// 	return
-				// }
-				// fmt.Printf("pvcSize *********** %v", pvcSize)
-
-				pvcSize := int64(1)
+				pvAvailable := int64(1)
 
 				metric := &TopologyMetricsRecord{
 					topologyMeta: topologyMeta,
-					pvcSize:      pvcSize,
+					pvAvailable:  pvAvailable,
 				}
-
-				s.Logger.Debugf("topology metrics -pv name %+v", metric.topologyMeta.PersistentVolume)
-				s.Logger.Debugf("topology metrics - pvcsize %+v", metric.pvcSize)
-				s.Logger.Debugf("topology metrics - provisionedsize %+v", topologyMeta.ProvisionedSize)
 
 				ch <- metric
 			}(volume)
@@ -816,8 +778,8 @@ func (s *PowerScaleService) gatherTopologyMetrics(ctx context.Context,
 	return ch
 }
 
-// pushVolumeQuotaMetrics will push the provided channel of volume metrics to a data collector
-func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyMetrics <-chan *TopologyMetricsRecord, listOfPVs []string) <-chan *TopologyMetricsRecord {
+// pushTopologyMetrics will push the provided channel of volume metrics to a data collector
+func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyMetrics <-chan *TopologyMetricsRecord) <-chan *TopologyMetricsRecord {
 	start := time.Now()
 	defer s.timeSince(start, "pushTopologyMetrics")
 	var wg sync.WaitGroup
@@ -828,11 +790,10 @@ func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyMet
 			wg.Add(1)
 			go func(metrics *TopologyMetricsRecord) {
 				defer wg.Done()
-				err := s.MetricsWrapper.RecordTopologyMetrics(ctx, metrics.topologyMeta, metrics, listOfPVs)
+				err := s.MetricsWrapper.RecordTopologyMetrics(ctx, metrics.topologyMeta, metrics)
 				if err != nil {
 					s.Logger.WithError(err).WithField("volume_id", metrics.topologyMeta.PersistentVolume).Error("recording topology metrics for volume")
 				} else {
-					fmt.Printf("recorded topology metrics for volume %v and size %v\n", metrics.topologyMeta.PersistentVolume, metrics.topologyMeta.ProvisionedSize)
 					ch <- metrics
 				}
 			}(metrics)
