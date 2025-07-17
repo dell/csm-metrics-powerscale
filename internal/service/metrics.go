@@ -21,7 +21,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/dell/csm-metrics-powerscale/internal/utils"
+	"github.com/dell/csm-metrics-powerscale/internal/utilsconverter"
 	"go.opentelemetry.io/otel/attribute"
 	otelMetric "go.opentelemetry.io/otel/metric"
 )
@@ -188,7 +188,7 @@ func (mw *MetricsWrapper) RecordClusterQuota(_ context.Context, meta interface{}
 		return err
 	}
 
-	hardQuotaGigabytes := utils.UnitsConvert(metric.totalHardQuota, utils.BYTES, utils.GB)
+	hardQuotaGigabytes := utilsconverter.UnitsConvert(metric.totalHardQuota, utilsconverter.BYTES, utilsconverter.GB)
 
 	metrics := metricsMapValue.(*ClusterQuotaMetrics)
 	done := make(chan struct{})
@@ -270,8 +270,8 @@ func (mw *MetricsWrapper) RecordVolumeQuota(_ context.Context, meta interface{},
 		return err
 	}
 
-	quotaSub := utils.UnitsConvert(metric.quotaSubscribed, utils.BYTES, utils.GB)
-	hardQuotaRemSub := utils.UnitsConvert(metric.hardQuotaRemaining, utils.BYTES, utils.GB)
+	quotaSub := utilsconverter.UnitsConvert(metric.quotaSubscribed, utilsconverter.BYTES, utilsconverter.GB)
+	hardQuotaRemSub := utilsconverter.UnitsConvert(metric.hardQuotaRemaining, utilsconverter.BYTES, utilsconverter.GB)
 
 	metrics := metricsMapValue.(*VolumeQuotaMetrics)
 
@@ -325,8 +325,8 @@ func (mw *MetricsWrapper) RecordClusterCapacityStatsMetrics(_ context.Context, m
 		return err
 	}
 
-	totalCapacityInitial := utils.UnitsConvert(metric.TotalCapacity, utils.BYTES, utils.TB)
-	remainingCapacity := utils.UnitsConvert(metric.RemainingCapacity, utils.BYTES, utils.TB)
+	totalCapacityInitial := utilsconverter.UnitsConvert(metric.TotalCapacity, utilsconverter.BYTES, utilsconverter.TB)
+	remainingCapacity := utilsconverter.UnitsConvert(metric.RemainingCapacity, utilsconverter.BYTES, utilsconverter.TB)
 	totalCapacityFinal := 100 * (metric.TotalCapacity - metric.RemainingCapacity) / metric.TotalCapacity
 
 	metrics := metricsMapValue.(*ClusterCapacityStatsMetrics)
@@ -384,8 +384,8 @@ func (mw *MetricsWrapper) RecordClusterPerformanceStatsMetrics(_ context.Context
 	}
 
 	cpuPercentage := metric.CPUPercentage / 10
-	diskReadThroughputRate := utils.UnitsConvert(metric.DiskReadThroughputRate, utils.BYTES, utils.MB)
-	diskWriteThroughputRate := utils.UnitsConvert(metric.DiskWriteThroughputRate, utils.BYTES, utils.MB)
+	diskReadThroughputRate := utilsconverter.UnitsConvert(metric.DiskReadThroughputRate, utilsconverter.BYTES, utilsconverter.MB)
+	diskWriteThroughputRate := utilsconverter.UnitsConvert(metric.DiskWriteThroughputRate, utilsconverter.BYTES, utilsconverter.MB)
 
 	metrics := metricsMapValue.(*ClusterPerformanceStatsMetrics)
 
