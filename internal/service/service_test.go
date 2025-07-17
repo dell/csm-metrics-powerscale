@@ -534,6 +534,42 @@ func Test_ExportTopologyMetrics(t *testing.T) {
 			}
 			return service, ctrl
 		},
+		"success": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+			ctrl := gomock.NewController(t)
+			metrics := mocks.NewMockMetricsRecorder(ctrl)
+			volFinder := mocks.NewMockVolumeFinder(ctrl)
+			scFinder := mocks.NewMockStorageClassFinder(ctrl)
+
+			// 	volFinder := mocks.NewMockVolumeFinder(ctrl)
+
+			volInfo := k8s.VolumeInfo{
+				Namespace:              "test-namespace",
+				PersistentVolumeClaim:  "test-pvc",
+				PersistentVolumeStatus: "Bound",
+				VolumeClaimName:        "test-pvc",
+				PersistentVolume:       "test-pv",
+				StorageClass:           "test-sc",
+				Driver:                 "test-driver",
+				ProvisionedSize:        "1Gi",
+				VolumeHandle:           "k8s-2217be0fe2=_=_=5=_=_=System=_=_=PIE-Isilon-X",
+				IsiPath:                "/test/path",
+			}
+
+			metrics.EXPECT().RecordTopologyMetrics(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
+			volFinder.EXPECT().GetPersistentVolumes(gomock.Any()).Return([]k8s.VolumeInfo{volInfo}, nil).Times(1)
+
+			file := "testdata/recordings/platform-3-statistics-current.json"
+			contentBytes, _ := os.ReadFile(file)
+			var stats goisilon.FloatStats
+			_ = json.Unmarshal(contentBytes, &stats)
+
+			service := service.PowerScaleService{
+				MetricsWrapper:     metrics,
+				VolumeFinder:       volFinder,
+				StorageClassFinder: scFinder,
+			}
+			return service, ctrl
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
