@@ -726,7 +726,6 @@ func (s *PowerScaleService) gatherTopologyMetrics(volumes <-chan k8s.VolumeInfo)
 	var wg sync.WaitGroup
 
 	go func() {
-
 		for volume := range volumes {
 			wg.Add(1)
 			go func(volume k8s.VolumeInfo) {

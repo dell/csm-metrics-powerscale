@@ -506,7 +506,6 @@ func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interfac
 
 	done := make(chan struct{})
 	reg, err := mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
-
 		obs.ObserveFloat64(metrics.PvAvailable, float64(metric.pvAvailable), otelMetric.WithAttributes(labels...))
 		go func() {
 			done <- struct{}{}

@@ -169,18 +169,22 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 
 		// check if tick interval config settings have changed
 		if ClusterCapacityTickInterval != config.ClusterCapacityTickInterval {
+			clusterCapacityTicker.Stop()
 			ClusterCapacityTickInterval = config.ClusterCapacityTickInterval
 			clusterCapacityTicker = time.NewTicker(ClusterCapacityTickInterval)
 		}
 		if ClusterPerformanceTickInterval != config.ClusterPerformanceTickInterval {
+			clusterPerformanceTicker.Stop()
 			ClusterPerformanceTickInterval = config.ClusterPerformanceTickInterval
 			clusterPerformanceTicker = time.NewTicker(ClusterPerformanceTickInterval)
 		}
 		if QuotaCapacityTickInterval != config.QuotaCapacityTickInterval {
+			quotaCapacityTicker.Stop()
 			QuotaCapacityTickInterval = config.QuotaCapacityTickInterval
 			quotaCapacityTicker = time.NewTicker(QuotaCapacityTickInterval)
 		}
 		if TopologyMetricsTickInterval != config.TopologyMetricsTickInterval {
+			topologyMetricsTicker.Stop()
 			TopologyMetricsTickInterval = config.TopologyMetricsTickInterval
 			topologyMetricsTicker = time.NewTicker(TopologyMetricsTickInterval)
 		}

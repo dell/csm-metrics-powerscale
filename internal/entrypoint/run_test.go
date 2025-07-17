@@ -68,6 +68,7 @@ func Test_Run(t *testing.T) {
 			config := &entrypoint.Config{
 				CapacityMetricsEnabled:         true,
 				PerformanceMetricsEnabled:      true,
+				TopologyMetricsEnabled:         true,
 				LeaderElector:                  leaderElector,
 				ClusterCapacityTickInterval:    1 * time.Second,
 				ClusterPerformanceTickInterval: 5 * time.Second,
@@ -88,6 +89,7 @@ func Test_Run(t *testing.T) {
 			config := &entrypoint.Config{
 				CapacityMetricsEnabled:         true,
 				PerformanceMetricsEnabled:      true,
+				TopologyMetricsEnabled:         true,
 				LeaderElector:                  leaderElector,
 				ClusterCapacityTickInterval:    5 * time.Second,
 				ClusterPerformanceTickInterval: 1 * time.Second,
@@ -108,6 +110,7 @@ func Test_Run(t *testing.T) {
 			config := &entrypoint.Config{
 				CapacityMetricsEnabled:         true,
 				PerformanceMetricsEnabled:      true,
+				TopologyMetricsEnabled:         true,
 				LeaderElector:                  leaderElector,
 				ClusterCapacityTickInterval:    5 * time.Second,
 				ClusterPerformanceTickInterval: 5 * time.Second,
@@ -128,6 +131,7 @@ func Test_Run(t *testing.T) {
 			config := &entrypoint.Config{
 				CapacityMetricsEnabled:         true,
 				PerformanceMetricsEnabled:      true,
+				TopologyMetricsEnabled:         true,
 				LeaderElector:                  leaderElector,
 				ClusterCapacityTickInterval:    5 * time.Second,
 				ClusterPerformanceTickInterval: 5 * time.Second,
@@ -150,6 +154,7 @@ func Test_Run(t *testing.T) {
 			config := &entrypoint.Config{
 				CapacityMetricsEnabled:         false,
 				PerformanceMetricsEnabled:      true,
+				TopologyMetricsEnabled:         true,
 				LeaderElector:                  leaderElector,
 				ClusterCapacityTickInterval:    100 * time.Millisecond,
 				ClusterPerformanceTickInterval: 100 * time.Millisecond,
@@ -181,6 +186,7 @@ func Test_Run(t *testing.T) {
 			config := &entrypoint.Config{
 				CapacityMetricsEnabled:         true,
 				PerformanceMetricsEnabled:      false,
+				TopologyMetricsEnabled:         true,
 				LeaderElector:                  leaderElector,
 				ClusterCapacityTickInterval:    100 * time.Millisecond,
 				ClusterPerformanceTickInterval: 100 * time.Millisecond,
@@ -331,4 +337,60 @@ func Test_Run(t *testing.T) {
 
 func noCheckConfig(_ *entrypoint.Config) error {
 	return nil
+}
+func Test_Run_WithTickIntervalChange(t *testing.T) {
+	// Override config validator to skip validation
+	originalValidator := entrypoint.ConfigValidatorFunc
+	entrypoint.ConfigValidatorFunc = func(cfg *entrypoint.Config) error { return nil }
+	defer func() { entrypoint.ConfigValidatorFunc = originalValidator }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	leaderElector := mocks.NewMockLeaderElector(ctrl)
+	leaderElector.EXPECT().InitLeaderElection("karavi-metrics-powerscale", "karavi").Times(1).Return(nil)
+	leaderElector.EXPECT().IsLeader().AnyTimes().Return(true)
+
+	e := exportermocks.NewMockOtlexporter(ctrl)
+	e.EXPECT().InitExporter(gomock.Any(), gomock.Any()).Times(1).Return(nil)
+	e.EXPECT().StopExporter().Return(nil)
+
+	svc := mocks.NewMockService(ctrl)
+	svc.EXPECT().ExportQuotaMetrics(gomock.Any()).AnyTimes()
+	svc.EXPECT().ExportClusterCapacityMetrics(gomock.Any()).AnyTimes()
+	svc.EXPECT().ExportClusterPerformanceMetrics(gomock.Any()).AnyTimes()
+	svc.EXPECT().ExportTopologyMetrics(gomock.Any()).AnyTimes()
+
+	config := &entrypoint.Config{
+		LeaderElector:                  leaderElector,
+		TopologyMetricsTickInterval:    5 * time.Second,
+		ClusterCapacityTickInterval:    5 * time.Second,
+		ClusterPerformanceTickInterval: 5 * time.Second,
+		QuotaCapacityTickInterval:      5 * time.Second,
+		CapacityMetricsEnabled:         true,
+		PerformanceMetricsEnabled:      true,
+		TopologyMetricsEnabled:         true,
+		CollectorAddress:               "localhost:4317",
+		Logger:                         logrus.New(),
+	}
+
+	// Run the entrypoint
+	// var wg sync.WaitGroup
+	// wg.Add(1)
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		config.TopologyMetricsTickInterval = 10 * time.Second
+		config.ClusterCapacityTickInterval = 10 * time.Second
+		config.ClusterPerformanceTickInterval = 10 * time.Second
+		// wg.Done()
+	}()
+	// wg.Wait()
+
+	err := entrypoint.Run(ctx, config, e, svc)
+	if err != nil {
+		t.Errorf("entrypoint.Run() error = %v", err)
+	}
 }
