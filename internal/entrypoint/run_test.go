@@ -19,7 +19,6 @@ package entrypoint_test
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
