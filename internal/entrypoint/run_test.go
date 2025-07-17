@@ -19,6 +19,7 @@ package entrypoint_test
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -338,10 +339,11 @@ func Test_Run(t *testing.T) {
 func noCheckConfig(_ *entrypoint.Config) error {
 	return nil
 }
+
 func Test_Run_WithTickIntervalChange(t *testing.T) {
 	// Override config validator to skip validation
 	originalValidator := entrypoint.ConfigValidatorFunc
-	entrypoint.ConfigValidatorFunc = func(cfg *entrypoint.Config) error { return nil }
+	entrypoint.ConfigValidatorFunc = func(_ *entrypoint.Config) error { return nil }
 	defer func() { entrypoint.ConfigValidatorFunc = originalValidator }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -377,17 +379,16 @@ func Test_Run_WithTickIntervalChange(t *testing.T) {
 		Logger:                         logrus.New(),
 	}
 
-	// Run the entrypoint
-	// var wg sync.WaitGroup
-	// wg.Add(1)
+	mu := &sync.Mutex{}
+
 	go func() {
 		time.Sleep(100 * time.Millisecond)
+		mu.Lock()
 		config.TopologyMetricsTickInterval = 10 * time.Second
 		config.ClusterCapacityTickInterval = 10 * time.Second
 		config.ClusterPerformanceTickInterval = 10 * time.Second
-		// wg.Done()
+		mu.Unlock()
 	}()
-	// wg.Wait()
 
 	err := entrypoint.Run(ctx, config, e, svc)
 	if err != nil {

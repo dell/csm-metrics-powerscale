@@ -477,6 +477,24 @@ func Test_ExportClusterMetrics(t *testing.T) {
 			}
 			return service, ctrl
 		},
+		"set MaxPowerScaleConnections to default": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+			ctrl := gomock.NewController(t)
+			volFinder := mocks.NewMockVolumeFinder(ctrl)
+			scFinder := mocks.NewMockStorageClassFinder(ctrl)
+
+			clients := make(map[string]service.PowerScaleClient)
+			c := mocks.NewMockPowerScaleClient(ctrl)
+			clients["cluster1"] = c
+
+			service := service.PowerScaleService{
+				MetricsWrapper:           nil,
+				VolumeFinder:             volFinder,
+				StorageClassFinder:       scFinder,
+				PowerScaleClients:        clients,
+				MaxPowerScaleConnections: 0,
+			}
+			return service, ctrl
+		},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -505,7 +523,7 @@ func Test_ExportTopologyMetrics(t *testing.T) {
 				StorageClass:           "test-sc",
 				Driver:                 "test-driver",
 				ProvisionedSize:        "1Gi",
-				VolumeHandle:           "test-handle",
+				VolumeHandle:           "k8s-2217be0fe2=_=_=5=_=_=System=_=_=PIE-Isilon-X",
 				IsiPath:                "/test/path",
 			}
 
