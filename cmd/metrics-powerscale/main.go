@@ -283,8 +283,8 @@ func updateTickIntervals(config *entrypoint.Config, logger *logrus.Logger) {
 
 	topologyMetricsTickInterval := defaultTickInterval
 	topologyMetricsPollFrequencySeconds := viper.GetString("POWERSCALE_TOPOLOGY_METRICS_POLL_FREQUENCY")
-	if topogyMetricsPollFrequencySeconds != "" {
-		numSeconds, err := strconv.Atoi(topogyMetricsPollFrequencySeconds)
+	if topologyMetricsPollFrequencySeconds != "" {
+		numSeconds, err := strconv.Atoi(topologyMetricsPollFrequencySeconds)
 		if err != nil {
 			logger.WithError(err).Fatal("POWERSCALE_TOPOLOGY_METRICS_POLL_FREQUENCY was not set to a valid number")
 		}
