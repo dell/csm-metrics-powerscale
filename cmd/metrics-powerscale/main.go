@@ -282,7 +282,7 @@ func updateTickIntervals(config *entrypoint.Config, logger *logrus.Logger) {
 	logger.WithField("cluster_performance_tick_interval", fmt.Sprintf("%v", clusterPerformanceTickInterval)).Debug("setting cluster performance tick interval")
 
 	topologyMetricsTickInterval := defaultTickInterval
-	topogyMetricsPollFrequencySeconds := viper.GetString("POWERSCALE_TOPOLOGY_METRICS_POLL_FREQUENCY")
+	topologyMetricsPollFrequencySeconds := viper.GetString("POWERSCALE_TOPOLOGY_METRICS_POLL_FREQUENCY")
 	if topogyMetricsPollFrequencySeconds != "" {
 		numSeconds, err := strconv.Atoi(topogyMetricsPollFrequencySeconds)
 		if err != nil {
