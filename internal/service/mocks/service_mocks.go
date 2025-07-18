@@ -1,5 +1,5 @@
 /*
- Copyright (c) 2022 Dell Inc. or its subsidiaries. All Rights Reserved.
+ Copyright (c) 2025 Dell Inc. or its subsidiaries. All Rights Reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -84,4 +84,16 @@ func (m *MockService) ExportQuotaMetrics(arg0 context.Context) {
 func (mr *MockServiceMockRecorder) ExportQuotaMetrics(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportQuotaMetrics", reflect.TypeOf((*MockService)(nil).ExportQuotaMetrics), arg0)
+}
+
+// ExportTopologyMetrics mocks base method.
+func (m *MockService) ExportTopologyMetrics(arg0 context.Context) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ExportTopologyMetrics", arg0)
+}
+
+// ExportTopologyMetrics indicates an expected call of ExportTopologyMetrics.
+func (mr *MockServiceMockRecorder) ExportTopologyMetrics(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportTopologyMetrics", reflect.TypeOf((*MockService)(nil).ExportTopologyMetrics), arg0)
 }

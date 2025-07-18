@@ -51,8 +51,10 @@ type Config struct {
 	ClusterCapacityTickInterval    time.Duration
 	ClusterPerformanceTickInterval time.Duration
 	QuotaCapacityTickInterval      time.Duration
+	TopologyMetricsTickInterval    time.Duration
 	CapacityMetricsEnabled         bool
 	PerformanceMetricsEnabled      bool
+	TopologyMetricsEnabled         bool
 	CollectorAddress               string
 	CollectorCertPath              string
 	Logger                         *logrus.Logger
@@ -110,6 +112,8 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 	clusterPerformanceTicker := time.NewTicker(ClusterPerformanceTickInterval)
 	QuotaCapacityTickInterval := config.QuotaCapacityTickInterval
 	quotaCapacityTicker := time.NewTicker(QuotaCapacityTickInterval)
+	TopologyMetricsTickInterval := config.TopologyMetricsTickInterval
+	topologyMetricsTicker := time.NewTicker(TopologyMetricsTickInterval)
 
 	for {
 		select {
@@ -144,6 +148,16 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 				continue
 			}
 			powerScaleSvc.ExportQuotaMetrics(ctx)
+		case <-topologyMetricsTicker.C:
+			if !config.LeaderElector.IsLeader() {
+				logger.Info("not leader pod to collect metrics")
+				continue
+			}
+			if !config.TopologyMetricsEnabled {
+				logger.Info("powerscale topology metrics collection is disabled")
+				continue
+			}
+			powerScaleSvc.ExportTopologyMetrics(ctx)
 		case err := <-errCh:
 			if err == nil {
 				continue
@@ -166,6 +180,10 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 			QuotaCapacityTickInterval = config.QuotaCapacityTickInterval
 			quotaCapacityTicker = time.NewTicker(QuotaCapacityTickInterval)
 		}
+		if TopologyMetricsTickInterval != config.TopologyMetricsTickInterval {
+			TopologyMetricsTickInterval = config.TopologyMetricsTickInterval
+			topologyMetricsTicker = time.NewTicker(TopologyMetricsTickInterval)
+		}
 	}
 }
 
@@ -185,6 +203,10 @@ func ValidateConfig(config *Config) error {
 
 	if config.QuotaCapacityTickInterval > MaximumTickInterval || config.QuotaCapacityTickInterval < MinimumTickInterval {
 		return fmt.Errorf("quota capacity polling frequency not within allowed range of %v and %v", MinimumTickInterval.String(), MaximumTickInterval.String())
+	}
+
+	if config.TopologyMetricsTickInterval > MaximumTickInterval || config.TopologyMetricsTickInterval < MinimumTickInterval {
+		return fmt.Errorf("topology metrics polling frequency not within allowed range of %v and %v", MinimumTickInterval.String(), MaximumTickInterval.String())
 	}
 
 	return nil

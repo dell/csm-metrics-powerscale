@@ -565,34 +565,37 @@ func TestUpdateProvisionerNames(t *testing.T) {
 
 func TestUpdateTickIntervals(t *testing.T) {
 	tests := []struct {
-		name            string
-		quotaFreq       string
-		clusterCapFreq  string
-		clusterPerfFreq string
-		expectedQuota   time.Duration
-		expectedCap     time.Duration
-		expectedPerf    time.Duration
-		expectPanic     bool
+		name               string
+		quotaFreq          string
+		clusterCapFreq     string
+		clusterPerfFreq    string
+		topologyMetricFreq string
+		expectedQuota      time.Duration
+		expectedCap        time.Duration
+		expectedPerf       time.Duration
+		expectPanic        bool
 	}{
 		{
-			name:            "Valid Values",
-			quotaFreq:       "30",
-			clusterCapFreq:  "25",
-			clusterPerfFreq: "15",
-			expectedQuota:   30 * time.Second,
-			expectedCap:     25 * time.Second,
-			expectedPerf:    15 * time.Second,
-			expectPanic:     false,
+			name:               "Valid Values",
+			quotaFreq:          "30",
+			clusterCapFreq:     "25",
+			clusterPerfFreq:    "15",
+			topologyMetricFreq: "5",
+			expectedQuota:      30 * time.Second,
+			expectedCap:        25 * time.Second,
+			expectedPerf:       15 * time.Second,
+			expectPanic:        false,
 		},
 		{
-			name:            "Invalid Quota",
-			quotaFreq:       "invalid",
-			clusterCapFreq:  "",
-			clusterPerfFreq: "",
-			expectedQuota:   defaultTickInterval,
-			expectedCap:     defaultTickInterval,
-			expectedPerf:    defaultTickInterval,
-			expectPanic:     true,
+			name:               "Invalid Quota",
+			quotaFreq:          "invalid",
+			clusterCapFreq:     "",
+			clusterPerfFreq:    "",
+			topologyMetricFreq: "",
+			expectedQuota:      defaultTickInterval,
+			expectedCap:        defaultTickInterval,
+			expectedPerf:       defaultTickInterval,
+			expectPanic:        true,
 		},
 	}
 
@@ -602,6 +605,7 @@ func TestUpdateTickIntervals(t *testing.T) {
 			viper.Set("POWERSCALE_QUOTA_CAPACITY_POLL_FREQUENCY", tt.quotaFreq)
 			viper.Set("POWERSCALE_CLUSTER_CAPACITY_POLL_FREQUENCY", tt.clusterCapFreq)
 			viper.Set("POWERSCALE_CLUSTER_PERFORMANCE_POLL_FREQUENCY", tt.clusterPerfFreq)
+			viper.Set("POWERSCALE_TOPOLOGY_METRICS_POLL_FREQUENCY", tt.topologyMetricFreq)
 
 			config := &entrypoint.Config{}
 			logger := logrus.New()

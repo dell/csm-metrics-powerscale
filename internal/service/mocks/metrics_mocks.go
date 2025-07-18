@@ -78,6 +78,20 @@ func (mr *MockMetricsRecorderMockRecorder) RecordClusterQuota(arg0, arg1, arg2 i
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordClusterQuota", reflect.TypeOf((*MockMetricsRecorder)(nil).RecordClusterQuota), arg0, arg1, arg2)
 }
 
+// RecordTopologyMetrics mocks base method.
+func (m *MockMetricsRecorder) RecordTopologyMetrics(arg0 context.Context, arg1 interface{}, arg2 *service.TopologyMetricsRecord) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordTopologyMetrics", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RecordTopologyMetrics indicates an expected call of RecordTopologyMetrics.
+func (mr *MockMetricsRecorderMockRecorder) RecordTopologyMetrics(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordTopologyMetrics", reflect.TypeOf((*MockMetricsRecorder)(nil).RecordTopologyMetrics), arg0, arg1, arg2)
+}
+
 // RecordVolumeQuota mocks base method.
 func (m *MockMetricsRecorder) RecordVolumeQuota(arg0 context.Context, arg1 interface{}, arg2 *service.VolumeQuotaMetricsRecord) error {
 	m.ctrl.T.Helper()

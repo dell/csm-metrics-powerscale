@@ -26,6 +26,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+const (
+	ProtocolNfs = "nfs"
+)
+
 // VolumeGetter is an interface for getting a list of persistent volume information
 //
 //go:generate mockgen -destination=mocks/volume_getter_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/k8s VolumeGetter
@@ -42,17 +46,21 @@ type VolumeFinder struct {
 
 // VolumeInfo contains information about mapping a Persistent Volume to the volume created on a storage system
 type VolumeInfo struct {
-	Namespace              string `json:"namespace"`
-	PersistentVolumeClaim  string `json:"persistent_volume_claim"`
-	PersistentVolumeStatus string `json:"volume_status"`
-	VolumeClaimName        string `json:"volume_claim_name"`
-	PersistentVolume       string `json:"persistent_volume"`
-	StorageClass           string `json:"storage_class"`
-	Driver                 string `json:"driver"`
-	ProvisionedSize        string `json:"provisioned_size"`
-	CreatedTime            string `json:"created_time"`
-	VolumeHandle           string `json:"volume_handle"`
-	IsiPath                string `json:"isipath"`
+	Namespace               string `json:"namespace"`
+	PersistentVolumeClaim   string `json:"persistent_volume_claim"`
+	PersistentVolumeStatus  string `json:"volume_status"`
+	VolumeClaimName         string `json:"volume_claim_name"`
+	PersistentVolume        string `json:"persistent_volume"`
+	StorageClass            string `json:"storage_class"`
+	Driver                  string `json:"driver"`
+	ProvisionedSize         string `json:"provisioned_size"`
+	CreatedTime             string `json:"created_time"`
+	VolumeHandle            string `json:"volume_handle"`
+	IsiPath                 string `json:"isipath"`
+	StorageSystemVolumeName string `json:"storage_system_volume_name"`
+	StoragePoolName         string `json:"storage_pool_name"`
+	StorageSystem           string `json:"storage_system"`
+	Protocol                string `json:"protocol"`
 }
 
 // GetPersistentVolumes will return a list of persistent volume information
@@ -88,17 +96,21 @@ func (f VolumeFinder) GetPersistentVolumes(_ context.Context) ([]VolumeInfo, err
 			}
 
 			info := VolumeInfo{
-				Namespace:              claim.Namespace,
-				PersistentVolumeClaim:  string(claim.UID),
-				VolumeClaimName:        claim.Name,
-				PersistentVolumeStatus: string(status.Phase),
-				PersistentVolume:       volume.Name,
-				StorageClass:           volume.Spec.StorageClassName,
-				Driver:                 volume.Spec.CSI.Driver,
-				ProvisionedSize:        capacity.String(),
-				CreatedTime:            volume.CreationTimestamp.String(),
-				VolumeHandle:           volume.Spec.CSI.VolumeHandle,
-				IsiPath:                isiPath,
+				Namespace:               claim.Namespace,
+				PersistentVolumeClaim:   string(claim.UID),
+				VolumeClaimName:         claim.Name,
+				PersistentVolumeStatus:  string(status.Phase),
+				PersistentVolume:        volume.Name,
+				StorageClass:            volume.Spec.StorageClassName,
+				Driver:                  volume.Spec.CSI.Driver,
+				ProvisionedSize:         capacity.String(),
+				CreatedTime:             volume.CreationTimestamp.String(),
+				VolumeHandle:            volume.Spec.CSI.VolumeHandle,
+				IsiPath:                 isiPath,
+				StorageSystemVolumeName: volume.Spec.CSI.VolumeAttributes["Name"],
+				StoragePoolName:         volume.Spec.CSI.VolumeAttributes["StoragePoolName"],
+				StorageSystem:           volume.Spec.CSI.VolumeAttributes["ClusterName"] + ":" + volume.Spec.CSI.VolumeAttributes["AccessZone"],
+				Protocol:                ProtocolNfs,
 			}
 			volumeInfo = append(volumeInfo, info)
 		}

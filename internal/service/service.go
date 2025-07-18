@@ -47,6 +47,7 @@ type Service interface {
 	ExportQuotaMetrics(context.Context)
 	ExportClusterCapacityMetrics(context.Context)
 	ExportClusterPerformanceMetrics(context.Context)
+	ExportTopologyMetrics(context.Context)
 }
 
 // PowerScaleClient contains operations for accessing the PowerScale API
@@ -125,6 +126,11 @@ type ClusterQuotaRecord struct {
 	clusterMeta       *ClusterMeta
 	totalHardQuota    int64
 	totalHardQuotaPct float64
+}
+
+type TopologyMetricsRecord struct {
+	topologyMeta *TopologyMeta
+	pvAvailable  int64
 }
 
 // ExportQuotaMetrics records quota metrics for the given list of Volumes
@@ -682,6 +688,109 @@ func (s *PowerScaleService) pushClusterPerformanceStatsMetrics(ctx context.Conte
 
 				ch <- metric
 			}(m)
+		}
+		wg.Wait()
+		close(ch)
+	}()
+
+	return ch
+}
+
+// ExportTopologyMetrics will export topology metrics
+func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
+	start := time.Now()
+	defer s.timeSince(start, "ExportTopologyMetrics")
+
+	if s.MetricsWrapper == nil {
+		s.Logger.Warn("no MetricsWrapper provided for getting ExportTopologyMetrics")
+		return
+	}
+
+	pvs, err := s.VolumeFinder.GetPersistentVolumes(ctx)
+	if err != nil {
+		s.Logger.WithError(err).Error("getting persistent volumes")
+		return
+	}
+
+	for range s.pushTopologyMetrics(ctx, s.gatherTopologyMetrics(s.volumeServer(ctx, pvs))) {
+		// consume the channel until it is empty and closed
+	} // revive:disable-line:empty-block
+}
+
+// gatherTopologyMetrics will return a channel of topology metrics
+func (s *PowerScaleService) gatherTopologyMetrics(volumes <-chan k8s.VolumeInfo) <-chan *TopologyMetricsRecord {
+	start := time.Now()
+	defer s.timeSince(start, "gatherTopologyMetrics")
+
+	ch := make(chan *TopologyMetricsRecord)
+	var wg sync.WaitGroup
+
+	go func() {
+		for volume := range volumes {
+			wg.Add(1)
+			go func(volume k8s.VolumeInfo) {
+				defer wg.Done()
+
+				// volumeName=_=_=exportID=_=_=accessZone=_=_=clusterName
+				// VolumeHandle is of the format "volumeHandle: k8s-2217be0fe2=_=_=5=_=_=System=_=_=PIE-Isilon-X"
+				volumeProperties := strings.Split(volume.VolumeHandle, "=_=_=")
+				if len(volumeProperties) != ExpectedVolumeHandleProperties {
+					s.Logger.WithField("volume_handle", volume.VolumeHandle).Warn("unable to get VolumeID and ClusterID from volume handle")
+					return
+				}
+
+				topologyMeta := &TopologyMeta{
+					Namespace:               volume.Namespace,
+					PersistentVolumeClaim:   volume.VolumeClaimName,
+					VolumeClaimName:         volume.PersistentVolume,
+					PersistentVolumeStatus:  volume.PersistentVolumeStatus,
+					PersistentVolume:        volume.PersistentVolume,
+					StorageClass:            volume.StorageClass,
+					Driver:                  volume.Driver,
+					ProvisionedSize:         volume.ProvisionedSize,
+					StorageSystemVolumeName: volume.StorageSystemVolumeName,
+					StoragePoolName:         volume.StoragePoolName,
+					StorageSystem:           volume.StorageSystem,
+					Protocol:                volume.Protocol,
+					CreatedTime:             volume.CreatedTime,
+				}
+
+				pvAvailable := int64(1)
+
+				metric := &TopologyMetricsRecord{
+					topologyMeta: topologyMeta,
+					pvAvailable:  pvAvailable,
+				}
+
+				ch <- metric
+			}(volume)
+		}
+
+		wg.Wait()
+		close(ch)
+	}()
+	return ch
+}
+
+// pushTopologyMetrics will push the provided channel of volume metrics to a data collector
+func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyMetrics <-chan *TopologyMetricsRecord) <-chan *TopologyMetricsRecord {
+	start := time.Now()
+	defer s.timeSince(start, "pushTopologyMetrics")
+	var wg sync.WaitGroup
+
+	ch := make(chan *TopologyMetricsRecord)
+	go func() {
+		for metrics := range topologyMetrics {
+			wg.Add(1)
+			go func(metrics *TopologyMetricsRecord) {
+				defer wg.Done()
+				err := s.MetricsWrapper.RecordTopologyMetrics(ctx, metrics.topologyMeta, metrics)
+				if err != nil {
+					s.Logger.WithError(err).WithField("volume_id", metrics.topologyMeta.PersistentVolume).Error("recording topology metrics for volume")
+				} else {
+					ch <- metrics
+				}
+			}(metrics)
 		}
 		wg.Wait()
 		close(ch)

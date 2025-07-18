@@ -34,6 +34,7 @@ type MetricsRecorder interface {
 	RecordClusterQuota(ctx context.Context, meta interface{}, metric *ClusterQuotaRecord) error
 	RecordClusterCapacityStatsMetrics(ctx context.Context, metric *ClusterCapacityStatsMetricsRecord) error
 	RecordClusterPerformanceStatsMetrics(ctx context.Context, metric *ClusterPerformanceStatsMetricsRecord) error
+	RecordTopologyMetrics(ctx context.Context, meta interface{}, metric *TopologyMetricsRecord) error
 }
 
 // MeterCreator interface is used to create and provide Meter instances, which are used to report measurements
@@ -52,6 +53,7 @@ type MetricsWrapper struct {
 	ClusterPerformanceStatsMetrics sync.Map
 	VolumeQuotaMetrics             sync.Map
 	ClusterQuotaMetrics            sync.Map
+	TopologyMetrics                sync.Map
 }
 
 // VolumeQuotaMetrics contains volume quota metrics data
@@ -60,6 +62,11 @@ type VolumeQuotaMetrics struct {
 	HardQuotaRemaining    otelMetric.Float64ObservableUpDownCounter
 	QuotaSubscribedPct    otelMetric.Float64ObservableUpDownCounter
 	HardQuotaRemainingPct otelMetric.Float64ObservableUpDownCounter
+}
+
+// TopologyMetrics contains topology metrics when PV is available on cluster
+type TopologyMetrics struct {
+	PvAvailable otelMetric.Float64ObservableUpDownCounter
 }
 
 // ClusterQuotaMetrics contains quota capacity in all directories
@@ -108,6 +115,7 @@ func haveLabelsChanged(currentLabels []attribute.KeyValue, labels []attribute.Ke
 
 func updateLabels(prefix, metaID string, labels []attribute.KeyValue, mw *MetricsWrapper, loadMetrics loadMetricsFunc, initMetrics initMetricsFunc) (any, error) {
 	metricsMapValue, ok := loadMetrics(metaID)
+
 	if !ok {
 		newMetrics, err := initMetrics(prefix, metaID, labels)
 		if err != nil {
@@ -450,6 +458,81 @@ func (mw *MetricsWrapper) initClusterPerformanceStatsMetrics(prefix string, id s
 
 	mw.ClusterPerformanceStatsMetrics.Store(id, metrics)
 	mw.Labels.Store(id, labels)
+
+	return metrics, nil
+}
+
+// RecordTopologyMetrics will publish topology data to Otel
+func (mw *MetricsWrapper) RecordTopologyMetrics(_ context.Context, meta interface{}, metric *TopologyMetricsRecord) error {
+	var metaID string
+	var labels []attribute.KeyValue
+
+	switch v := meta.(type) {
+	case *TopologyMeta:
+		metaID = v.PersistentVolume
+		labels = []attribute.KeyValue{
+			attribute.String("PersistentVolumeClaim", v.PersistentVolumeClaim),
+			attribute.String("Driver", v.Driver),
+			attribute.String("PersistentVolume", v.PersistentVolume),
+			attribute.String("PersistentVolumeStatus", v.PersistentVolumeStatus),
+			attribute.String("StorageClass", v.StorageClass),
+			attribute.String("PlotWithMean", "No"),
+			attribute.String("StorageClass", v.StorageClass),
+			attribute.String("Namespace", v.Namespace),
+			attribute.String("ProvisionedSize", v.ProvisionedSize),
+			attribute.String("StorageSystemVolumeName", v.StorageSystemVolumeName),
+			attribute.String("StorageSystem", v.StorageSystem),
+			attribute.String("Protocol", v.Protocol),
+			attribute.String("CreatedTime", v.CreatedTime),
+		}
+	default:
+		return errors.New("unknown MetaData type")
+	}
+
+	loadMetricsFunc := func(metaID string) (any, bool) {
+		return mw.TopologyMetrics.Load(metaID)
+	}
+
+	initMetricsFunc := func(_, metaID string, labels []attribute.KeyValue) (any, error) {
+		return mw.initTopologyMetrics(metaID, labels)
+	}
+
+	metricsMapValue, err := updateLabels("", metaID, labels, mw, loadMetricsFunc, initMetricsFunc)
+	if err != nil {
+		return err
+	}
+
+	metrics := metricsMapValue.(*TopologyMetrics)
+
+	done := make(chan struct{})
+	reg, err := mw.Meter.RegisterCallback(func(_ context.Context, obs otelMetric.Observer) error {
+		obs.ObserveFloat64(metrics.PvAvailable, float64(metric.pvAvailable), otelMetric.WithAttributes(labels...))
+		go func() {
+			done <- struct{}{}
+		}()
+		return nil
+	},
+		metrics.PvAvailable)
+	if err != nil {
+		return err
+	}
+
+	<-done
+
+	_ = reg.Unregister()
+
+	return nil
+}
+
+func (mw *MetricsWrapper) initTopologyMetrics(metaID string, labels []attribute.KeyValue) (*TopologyMetrics, error) {
+	pvAvailable, _ := mw.Meter.Float64ObservableUpDownCounter("karavi_topology_metrics")
+
+	metrics := &TopologyMetrics{
+		PvAvailable: pvAvailable,
+	}
+
+	mw.TopologyMetrics.Store(metaID, metrics)
+	mw.Labels.Store(metaID, labels)
 
 	return metrics, nil
 }

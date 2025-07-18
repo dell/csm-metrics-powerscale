@@ -62,3 +62,19 @@ type PowerScaleCluster struct {
 	EndpointURL   string
 	IP            string
 }
+
+type TopologyMeta struct {
+	Namespace               string
+	PersistentVolumeClaim   string
+	PersistentVolumeStatus  string
+	VolumeClaimName         string
+	PersistentVolume        string
+	StorageClass            string
+	Driver                  string
+	ProvisionedSize         string
+	StorageSystemVolumeName string
+	StoragePoolName         string
+	StorageSystem           string
+	Protocol                string
+	CreatedTime             string
+}
