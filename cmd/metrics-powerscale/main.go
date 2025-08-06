@@ -55,8 +55,6 @@ func main() {
 func initializeComponents() (*logrus.Logger, *entrypoint.Config, *otlexporters.OtlCollectorExporter, *service.PowerScaleService) {
 	logger := setupLogger()
 
-	loadConfig(logger)
-
 	configFileListener := setupConfigFileListener()
 	leaderElector := &k8s.LeaderElector{API: &k8s.LeaderElector{}}
 	config := setupConfig(logger, leaderElector)
@@ -74,6 +72,7 @@ func initializeComponents() (*logrus.Logger, *entrypoint.Config, *otlexporters.O
 // setupLogger initializes and configures the logger.
 func setupLogger() *logrus.Logger {
 	logger := logrus.New()
+	loadConfig(logger)
 	updateLoggingSettings(logger)
 	return logger
 }
