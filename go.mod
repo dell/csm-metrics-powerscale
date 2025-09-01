@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.5
 
 require (
-	github.com/dell/goisilon v1.19.1-0.20250708120138-0d938924b4df
+	github.com/dell/goisilon v1.19.1-0.20250828071604-4688201e7277
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/golang/mock v1.6.0
 	github.com/gorilla/mux v1.8.1
