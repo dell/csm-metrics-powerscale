@@ -3,7 +3,7 @@ module github.com/dell/csm-metrics-powerscale
 go 1.25
 
 require (
-	github.com/dell/goisilon v1.19.1-0.20250828071604-4688201e7277
+	github.com/dell/goisilon v1.19.1-0.20250904220606-ded4eec2654d
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/golang/mock v1.6.0
 	github.com/gorilla/mux v1.8.1
