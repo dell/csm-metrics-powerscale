@@ -24,8 +24,8 @@ LABEL vendor="Dell Technologies" \
       name="csm-metrics-powerscale" \
       summary="Dell Container Storage Modules (CSM) for Observability - Metrics for PowerScale" \
       description="Provides insight into storage usage and performance as it relates to the CSI (Container Storage Interface) Driver for Dell PowerScale" \
-      release="1.14.0" \
-      version="1.9.0" \
+      release="1.15.0" \
+      version="1.10.0" \
       license="Apache-2.0"
 
 COPY /licenses /licenses
