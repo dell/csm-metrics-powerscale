@@ -10,8 +10,8 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/dell/goisilon v1.19.1-0.20250904220606-ded4eec2654d h1:on6d6pWmFdhj9DO4yWfrcl9IrPRFY0U5gzwO5jBuzIQ=
-github.com/dell/goisilon v1.19.1-0.20250904220606-ded4eec2654d/go.mod h1:9He3aVVfVf7MOrAFICVEiToZBrFQsXy1amjFe8B4rw4=
+github.com/dell/goisilon v1.20.0 h1:10gcC3TKAayUBS7lQRNmOhAeLhqKoM5YaYrBqwFPB3c=
+github.com/dell/goisilon v1.20.0/go.mod h1:9He3aVVfVf7MOrAFICVEiToZBrFQsXy1amjFe8B4rw4=
 github.com/emicklei/go-restful/v3 v3.12.2 h1:DhwDP0vY3k8ZzE0RunuJy8GhNpPL6zqLkDf9B/a0/xU=
 github.com/emicklei/go-restful/v3 v3.12.2/go.mod h1:6n3XBCmQQb25CM2LCACGz8ukIrRry+4bhvbpWn3mrbc=
 github.com/frankban/quicktest v1.14.6 h1:7Xjx+VpznH+oBnejlPUj8oUpdxnVs4f8XU8WnHkI4W8=
