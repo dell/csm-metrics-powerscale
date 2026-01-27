@@ -18,6 +18,6 @@ isilonClusters:
     endpoint: "[serverip]"
     isDefault: true
     skipCertificateValidation: true
-    isiPath: "/ifs/data/test-goisilon"
+    isiPath: "/ifs/data/test-gopowerscale"
     isiVolumePathPermissions: "0777"
     replicationCertificateID: ""

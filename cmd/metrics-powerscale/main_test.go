@@ -27,7 +27,7 @@ import (
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
 	"github.com/dell/csm-metrics-powerscale/internal/service"
 	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
-	"github.com/dell/goisilon"
+	"github.com/dell/gopowerscale"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -42,13 +42,13 @@ func TestInitializeComponents(t *testing.T) {
 		return map[string]*service.PowerScaleCluster{
 				"cluster1": {
 					ClusterName: "cluster1",
-					Client:      &goisilon.Client{},
+					Client:      &gopowerscale.Client{},
 					IsiPath:     "/ifs/data/csi",
 					IsDefault:   true,
 				},
 			}, &service.PowerScaleCluster{
 				ClusterName: "cluster1",
-				Client:      &goisilon.Client{},
+				Client:      &gopowerscale.Client{},
 				IsiPath:     "/ifs/data/csi",
 				IsDefault:   true,
 			}, nil
@@ -373,14 +373,14 @@ func TestUpdatePowerScaleConnection(t *testing.T) {
 			clusters: map[string]*service.PowerScaleCluster{
 				"cluster1": {
 					ClusterName: "cluster1",
-					Client:      &goisilon.Client{},
+					Client:      &gopowerscale.Client{},
 					IsiPath:     "/ifs/data/csi",
 					IsDefault:   true,
 				},
 			},
 			defaultCluster: &service.PowerScaleCluster{
 				ClusterName: "cluster1",
-				Client:      &goisilon.Client{},
+				Client:      &gopowerscale.Client{},
 				IsiPath:     "/ifs/data/csi",
 				IsDefault:   true,
 			},

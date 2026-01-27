@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"github.com/dell/csm-metrics-powerscale/internal/pscaleresource"
-	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -106,7 +105,7 @@ func getHandler() http.Handler {
 }
 
 func getRouter() http.Handler {
-	isilonRouter := mux.NewRouter()
+	isilonRouter := http.NewServeMux()
 	isilonRouter.HandleFunc("/platform/latest/", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("{\"latest\": \"14\"}"))
 	})

@@ -1,0 +1,7 @@
+site_name: 'csm-metrics-powerscale'
+site_description: 'csm-metrics-powerscale Documentation.'
+docs_dir: docs
+plugins:
+  - techdocs-core
+theme:
+  name: material

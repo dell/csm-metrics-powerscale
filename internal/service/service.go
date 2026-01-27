@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
-	"github.com/dell/goisilon"
+	"github.com/dell/gopowerscale"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/storage/v1"
 )
@@ -54,8 +54,8 @@ type Service interface {
 //
 //go:generate mockgen -destination=mocks/powerscale_client_mocks.go -package=mocks github.com/dell/csm-metrics-powerscale/internal/service PowerScaleClient
 type PowerScaleClient interface {
-	GetFloatStatistics(ctx context.Context, keys []string) (goisilon.FloatStats, error)
-	GetAllQuotas(ctx context.Context) (goisilon.QuotaList, error)
+	GetFloatStatistics(ctx context.Context, keys []string) (gopowerscale.FloatStats, error)
+	GetAllQuotas(ctx context.Context) (gopowerscale.QuotaList, error)
 }
 
 // PowerScaleService represents the service for getting metrics data for a PowerScale system
@@ -154,7 +154,7 @@ func (s *PowerScaleService) ExportQuotaMetrics(ctx context.Context) {
 		return
 	}
 
-	cluster2Quotas := make(map[string]goisilon.QuotaList)
+	cluster2Quotas := make(map[string]gopowerscale.QuotaList)
 	for clusterName, client := range s.PowerScaleClients {
 		quotaList, err := client.GetAllQuotas(ctx)
 		if err != nil {
@@ -211,7 +211,7 @@ func (s *PowerScaleService) pushClusterQuotaMetrics(ctx context.Context, cluster
 }
 
 // gatherClusterQuotaMetrics will return a channel of volume metrics based on the input of volumes
-func (s *PowerScaleService) gatherClusterQuotaMetrics(_ context.Context, cluster2Quotas map[string]goisilon.QuotaList) <-chan *ClusterQuotaRecord {
+func (s *PowerScaleService) gatherClusterQuotaMetrics(_ context.Context, cluster2Quotas map[string]gopowerscale.QuotaList) <-chan *ClusterQuotaRecord {
 	start := time.Now()
 	defer s.timeSince(start, "gatherClusterQuotaMetrics")
 
@@ -263,8 +263,8 @@ func (s *PowerScaleService) gatherClusterQuotaMetrics(_ context.Context, cluster
 	return ch
 }
 
-func getHighestQuotas(list goisilon.QuotaList) goisilon.QuotaList {
-	highestQuotas := make(goisilon.QuotaList, 0)
+func getHighestQuotas(list gopowerscale.QuotaList) gopowerscale.QuotaList {
+	highestQuotas := make(gopowerscale.QuotaList, 0)
 	for _, quota := range list {
 		if quota.Type != DirectoryQuotaType {
 			continue
@@ -306,7 +306,7 @@ func (s *PowerScaleService) volumeServer(_ context.Context, volumes []k8s.Volume
 }
 
 // gatherVolumeQuotaMetrics will return a channel of volume metrics based on the input of volumes
-func (s *PowerScaleService) gatherVolumeQuotaMetrics(ctx context.Context, cluster2Quotas map[string]goisilon.QuotaList,
+func (s *PowerScaleService) gatherVolumeQuotaMetrics(ctx context.Context, cluster2Quotas map[string]gopowerscale.QuotaList,
 	volumes <-chan k8s.VolumeInfo,
 ) <-chan *VolumeQuotaMetricsRecord {
 	start := time.Now()
@@ -374,7 +374,7 @@ func (s *PowerScaleService) gatherVolumeQuotaMetrics(ctx context.Context, cluste
 				}
 
 				path := volumeMeta.IsiPath + "/" + volumeID
-				var volQuota goisilon.Quota
+				var volQuota gopowerscale.Quota
 				for _, q := range cluster2Quotas[clusterName] {
 					if q.Path == path && q.Type == DirectoryQuotaType {
 						volQuota = q

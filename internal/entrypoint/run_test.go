@@ -30,7 +30,7 @@ import (
 	"github.com/dell/csm-metrics-powerscale/internal/entrypoint"
 	pScaleService "github.com/dell/csm-metrics-powerscale/internal/service"
 	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 )
 
 func Test_Run(t *testing.T) {
