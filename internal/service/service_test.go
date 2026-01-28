@@ -24,7 +24,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dell/goisilon"
+	"github.com/dell/gopowerscale"
 	v1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -33,7 +33,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 )
 
 var mockVolumes = []k8s.VolumeInfo{
@@ -78,12 +78,12 @@ var mockVolumes = []k8s.VolumeInfo{
 func Test_ExportVolumeMetrics(t *testing.T) {
 	quotaFile1 := "testdata/recordings/client1-quotas.json"
 	contentBytes1, _ := os.ReadFile(quotaFile1)
-	var client1MockQuotaList goisilon.QuotaList
+	var client1MockQuotaList gopowerscale.QuotaList
 	_ = json.Unmarshal(contentBytes1, &client1MockQuotaList)
 
 	quotaFile2 := "testdata/recordings/client2-quotas.json"
 	contentBytes2, _ := os.ReadFile(quotaFile2)
-	var client2MockQuotaList goisilon.QuotaList
+	var client2MockQuotaList gopowerscale.QuotaList
 	_ = json.Unmarshal(contentBytes2, &client2MockQuotaList)
 
 	tests := map[string]func(t *testing.T) (service.PowerScaleService, *gomock.Controller){
@@ -444,7 +444,7 @@ func Test_ExportClusterMetrics(t *testing.T) {
 
 			file := "testdata/recordings/platform-3-statistics-current.json"
 			contentBytes, _ := os.ReadFile(file)
-			var stats goisilon.FloatStats
+			var stats gopowerscale.FloatStats
 			_ = json.Unmarshal(contentBytes, &stats)
 
 			clients := make(map[string]service.PowerScaleClient)
@@ -560,7 +560,7 @@ func Test_ExportTopologyMetrics(t *testing.T) {
 
 			file := "testdata/recordings/platform-3-statistics-current.json"
 			contentBytes, _ := os.ReadFile(file)
-			var stats goisilon.FloatStats
+			var stats gopowerscale.FloatStats
 			_ = json.Unmarshal(contentBytes, &stats)
 
 			service := service.PowerScaleService{

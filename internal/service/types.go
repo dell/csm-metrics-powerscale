@@ -17,7 +17,7 @@
 package service
 
 import (
-	"github.com/dell/goisilon"
+	"github.com/dell/gopowerscale"
 )
 
 // VolumeMeta is the details of a volume
@@ -58,7 +58,7 @@ type PowerScaleCluster struct {
 	IsiAuthType uint8
 
 	MountEndpoint string `yaml:"mountEndpoint,omitempty"`
-	Client        *goisilon.Client
+	Client        *gopowerscale.Client
 	EndpointURL   string
 	IP            string
 }

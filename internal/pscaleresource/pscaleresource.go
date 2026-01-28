@@ -25,7 +25,7 @@ import (
 	"strings"
 
 	"github.com/dell/csm-metrics-powerscale/internal/service"
-	"github.com/dell/goisilon"
+	"github.com/dell/gopowerscale"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"google.golang.org/grpc/codes"
@@ -43,7 +43,7 @@ const (
 	defaultInsecure    = true
 )
 
-// GetPowerScaleClusters parses config.yaml file, initializes goisilon Clients and composes map of clusters for ease of access.
+// GetPowerScaleClusters parses config.yaml file, initializes gopowerscale Clients and composes map of clusters for ease of access.
 // It will return cluster that can be used as default as a second return parameter.
 // If config does not have any cluster as a default then the first will be returned as a default.
 func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
@@ -75,7 +75,7 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 	// Safeguard if user doesn't set any cluster as default, we just use first one
 	defaultCluster = cfg.Clusters[0]
 
-	// Convert to map for convenience and init goisilon.Client
+	// Convert to map for convenience and init gopowerscale.Client
 	for _, cluster := range cfg.Clusters {
 		cluster := cluster
 		if cluster == nil {
@@ -131,7 +131,7 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 			"verbose":  cluster.Verbose,
 		}).Infof("setting client options")
 
-		c, err := goisilon.NewClientWithArgs(
+		c, err := gopowerscale.NewClientWithArgs(
 			context.Background(),
 			cluster.EndpointURL,
 			cluster.Insecure,
