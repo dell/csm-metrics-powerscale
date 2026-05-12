@@ -71,7 +71,7 @@ func Test_Run(t *testing.T) {
 
 			newContent := strings.Replace(string(fileContentBytes), "[serverip]", serverIP, 1)
 			newContent = strings.Replace(newContent, "[serverport]", serverPort, 1)
-			_ = os.WriteFile(filePath, []byte(newContent), 0o600)
+			_ = os.WriteFile(filePath, []byte(newContent), 0o600) // #nosec G703 -- This is a false positive as the filepath is hardcoded in the test
 
 			clusters, defaultCluster, err := pscaleresource.GetPowerScaleClusters(filePath, logger)
 
@@ -84,7 +84,7 @@ func Test_Run(t *testing.T) {
 				assert.NotNil(t, defaultCluster)
 				assert.Nil(t, err)
 			}
-			_ = os.WriteFile(filePath, fileContentBytes, 0o600)
+			_ = os.WriteFile(filePath, fileContentBytes, 0o600) // #nosec G703 -- This is a false positive as the filepath is hardcoded in the test
 		})
 	}
 }

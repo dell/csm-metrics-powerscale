@@ -101,7 +101,11 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 		errCh <- exporter.InitExporter(options...)
 	}()
 
-	defer exporter.StopExporter()
+	defer func() {
+		if err := exporter.StopExporter(); err != nil {
+			logger.WithError(err).Error("failed to stop exporter")
+		}
+	}()
 
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
