@@ -28,9 +28,9 @@ import (
 	"github.com/dell/gopowerscale"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"go.yaml.in/yaml/v3"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -112,11 +112,12 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 		}
 
 		insecure := viper.GetString("POWERSCALE_ISICLIENT_INSECURE")
-		if insecure == "false" {
+		switch insecure {
+		case "false":
 			cluster.Insecure = false
-		} else if insecure == "true" {
+		case "true":
 			cluster.Insecure = true
-		} else {
+		default:
 			logger.Warningf("POWERSCALE_ISICLIENT_INSECURE is invalid, setting it to defaultInsecure: %t", defaultInsecure)
 			cluster.Insecure = defaultInsecure
 		}
