@@ -18,13 +18,13 @@ package service_test
 
 import (
 	"context"
+	"runtime"
 	"testing"
 
-	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
-
 	"github.com/dell/csm-metrics-powerscale/internal/service"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 const (
@@ -35,23 +35,16 @@ const (
 )
 
 func TestMetricsWrapper_RecordClusterQuota(t *testing.T) {
+	ctx := context.Background()
+	provider, reader := newTestProvider(t)
 	mw := &service.MetricsWrapper{
-		Meter: otel.Meter("powersscale-test"),
+		Meter: provider.Meter("powersscale-test"),
 	}
 	clusterMetas := []interface{}{
-		&service.ClusterMeta{
-			ClusterName: TestCluster1,
-		},
+		&service.ClusterMeta{ClusterName: TestCluster1},
 	}
 	volumeMetas := []interface{}{
-		&service.VolumeMeta{
-			ClusterName: TestCluster1,
-		},
-	}
-	exporter := &otlexporters.OtlCollectorExporter{}
-	err := exporter.InitExporter()
-	if err != nil {
-		t.Fatal(err)
+		&service.VolumeMeta{ClusterName: TestCluster1},
 	}
 	clusterQuotaRecordMetric := &service.ClusterQuotaRecord{}
 	type args struct {
@@ -65,30 +58,16 @@ func TestMetricsWrapper_RecordClusterQuota(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-		{
-			name: "success",
-			mw:   mw,
-			args: args{
-				ctx:    context.Background(),
-				meta:   clusterMetas[0],
-				metric: clusterQuotaRecordMetric,
-			},
-			wantErr: false,
-		},
-		{
-			name: "fail",
-			mw:   mw,
-			args: args{
-				ctx:    context.Background(),
-				meta:   volumeMetas[0],
-				metric: clusterQuotaRecordMetric,
-			},
-			wantErr: true,
-		},
+		{name: "success", mw: mw, args: args{ctx: ctx, meta: clusterMetas[0], metric: clusterQuotaRecordMetric}, wantErr: false},
+		{name: "fail", mw: mw, args: args{ctx: ctx, meta: volumeMetas[0], metric: clusterQuotaRecordMetric}, wantErr: true},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.mw.RecordClusterQuota(tt.args.ctx, tt.args.meta, tt.args.metric); (err != nil) != tt.wantErr {
+			err := collectUntilDone(ctx, reader, func() error {
+				return tt.mw.RecordClusterQuota(tt.args.ctx, tt.args.meta, tt.args.metric)
+			})
+			if (err != nil) != tt.wantErr {
 				t.Errorf("MetricsWrapper.RecordClusterQuota() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -96,26 +75,17 @@ func TestMetricsWrapper_RecordClusterQuota(t *testing.T) {
 }
 
 func TestMetricsWrapper_RecordVolumeQuota(t *testing.T) {
+	ctx := context.Background()
+	provider, reader := newTestProvider(t)
 	mw := &service.MetricsWrapper{
-		Meter: otel.Meter("powersscale-test"),
+		Meter: provider.Meter("powersscale-test"),
 	}
 	clusterMetas := []interface{}{
-		&service.ClusterMeta{
-			ClusterName: TestCluster1,
-		},
+		&service.ClusterMeta{ClusterName: TestCluster1},
 	}
 	volumeMetas := []interface{}{
-		&service.VolumeMeta{
-			ID:          "123",
-			ClusterName: TestCluster1,
-		},
+		&service.VolumeMeta{ID: "123", ClusterName: TestCluster1},
 	}
-	exporter := &otlexporters.OtlCollectorExporter{}
-	err := exporter.InitExporter()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	VolumeQuotaMetricsRecordMetric := &service.VolumeQuotaMetricsRecord{}
 	type args struct {
 		ctx    context.Context
@@ -128,30 +98,16 @@ func TestMetricsWrapper_RecordVolumeQuota(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-		{
-			name: "success",
-			mw:   mw,
-			args: args{
-				ctx:    context.Background(),
-				meta:   volumeMetas[0],
-				metric: VolumeQuotaMetricsRecordMetric,
-			},
-			wantErr: false,
-		},
-		{
-			name: "fail",
-			mw:   mw,
-			args: args{
-				ctx:    context.Background(),
-				meta:   clusterMetas[0],
-				metric: VolumeQuotaMetricsRecordMetric,
-			},
-			wantErr: true,
-		},
+		{name: "success", mw: mw, args: args{ctx: ctx, meta: volumeMetas[0], metric: VolumeQuotaMetricsRecordMetric}, wantErr: false},
+		{name: "fail", mw: mw, args: args{ctx: ctx, meta: clusterMetas[0], metric: VolumeQuotaMetricsRecordMetric}, wantErr: true},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.mw.RecordVolumeQuota(tt.args.ctx, tt.args.meta, tt.args.metric); (err != nil) != tt.wantErr {
+			err := collectUntilDone(ctx, reader, func() error {
+				return tt.mw.RecordVolumeQuota(tt.args.ctx, tt.args.meta, tt.args.metric)
+			})
+			if (err != nil) != tt.wantErr {
 				t.Errorf("MetricsWrapper.RecordVolumeQuota() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -159,8 +115,10 @@ func TestMetricsWrapper_RecordVolumeQuota(t *testing.T) {
 }
 
 func TestMetricsWrapper_RecordClusterCapacityStatsMetrics(t *testing.T) {
+	ctx := context.Background()
+	provider, reader := newTestProvider(t)
 	mw := &service.MetricsWrapper{
-		Meter: otel.Meter("powersscale-test"),
+		Meter: provider.Meter("powersscale-test"),
 	}
 	type args struct {
 		ctx    context.Context
@@ -178,19 +136,15 @@ func TestMetricsWrapper_RecordClusterCapacityStatsMetrics(t *testing.T) {
 		args    args
 		wantErr bool
 	}{
-		{
-			name: "success",
-			mw:   mw,
-			args: args{
-				ctx:    context.Background(),
-				metric: ClusterCapacityStatsMetricsRecordMetric,
-			},
-			wantErr: false,
-		},
+		{name: "success", mw: mw, args: args{ctx: ctx, metric: ClusterCapacityStatsMetricsRecordMetric}, wantErr: false},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.mw.RecordClusterCapacityStatsMetrics(tt.args.ctx, tt.args.metric); (err != nil) != tt.wantErr {
+			err := collectUntilDone(ctx, reader, func() error {
+				return tt.mw.RecordClusterCapacityStatsMetrics(tt.args.ctx, tt.args.metric)
+			})
+			if (err != nil) != tt.wantErr {
 				t.Errorf("MetricsWrapper.RecordClusterCapacityStatsMetrics() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -198,8 +152,10 @@ func TestMetricsWrapper_RecordClusterCapacityStatsMetrics(t *testing.T) {
 }
 
 func TestMetricsWrapper_RecordClusterPerformanceStatsMetrics(t *testing.T) {
+	ctx := context.Background()
+	provider, reader := newTestProvider(t)
 	mw := &service.MetricsWrapper{
-		Meter: otel.Meter("powersscale-test"),
+		Meter: provider.Meter("powersscale-test"),
 	}
 	type args struct {
 		ctx    context.Context
@@ -213,34 +169,47 @@ func TestMetricsWrapper_RecordClusterPerformanceStatsMetrics(t *testing.T) {
 		DiskReadThroughputRate:  187.7333333333333,
 		DiskWriteThroughputRate: 187.7333333333333,
 	}
-	exporter := &otlexporters.OtlCollectorExporter{}
-	err := exporter.InitExporter()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	tests := []struct {
 		name    string
 		mw      *service.MetricsWrapper
 		args    args
 		wantErr bool
 	}{
-		{
-			name: "success",
-			mw:   mw,
-			args: args{
-				ctx:    context.Background(),
-				metric: ClusterPerformanceStatsMetricsRecordMetric,
-			},
-			wantErr: false,
-		},
+		{name: "success", mw: mw, args: args{ctx: ctx, metric: ClusterPerformanceStatsMetricsRecordMetric}, wantErr: false},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.mw.RecordClusterPerformanceStatsMetrics(tt.args.ctx, tt.args.metric); (err != nil) != tt.wantErr {
+			err := collectUntilDone(ctx, reader, func() error {
+				return tt.mw.RecordClusterPerformanceStatsMetrics(tt.args.ctx, tt.args.metric)
+			})
+			if (err != nil) != tt.wantErr {
 				t.Errorf("MetricsWrapper.RecordClusterPerformanceStatsMetrics() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func newTestProvider(t *testing.T) (*sdkmetric.MeterProvider, *sdkmetric.ManualReader) {
+	t.Helper()
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	return provider, reader
+}
+
+func collectUntilDone(ctx context.Context, reader *sdkmetric.ManualReader, fn func() error) error {
+	errCh := make(chan error, 1)
+	go func() { errCh <- fn() }()
+	for {
+		var rm metricdata.ResourceMetrics
+		_ = reader.Collect(ctx, &rm)
+		select {
+		case err := <-errCh:
+			return err
+		default:
+			runtime.Gosched()
+		}
 	}
 }
 
@@ -257,14 +226,13 @@ func assertEqual(a, b []attribute.KeyValue) bool {
 }
 
 func TestMetricsWrapper_RecordClusterQuota_UpdateLabels(t *testing.T) {
-	mw := &service.MetricsWrapper{
-		Meter: otel.Meter("powerscale-test"),
-	}
+	ctx := context.Background()
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	defer func() { _ = provider.Shutdown(ctx) }()
 
-	exporter := &otlexporters.OtlCollectorExporter{}
-	err := exporter.InitExporter()
-	if err != nil {
-		t.Fatal(err)
+	mw := &service.MetricsWrapper{
+		Meter: provider.Meter("powerscale-test"),
 	}
 
 	tests := []struct {
@@ -345,6 +313,7 @@ func TestMetricsWrapper_RecordClusterQuota_UpdateLabels(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.initialLabels != nil {
 				mw.Labels.Store(tt.initialMetaID, tt.initialLabels)
@@ -355,9 +324,24 @@ func TestMetricsWrapper_RecordClusterQuota_UpdateLabels(t *testing.T) {
 			}
 			metric := &service.ClusterQuotaRecord{}
 
-			err := mw.RecordClusterQuota(context.Background(), clusterMeta, metric)
-			if err != nil {
-				t.Fatalf("RecordClusterQuota() returned an unexpected error: %v", err)
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- mw.RecordClusterQuota(ctx, clusterMeta, metric)
+			}()
+
+		collectLoop:
+			for {
+				var rm metricdata.ResourceMetrics
+				_ = reader.Collect(ctx, &rm)
+				select {
+				case err := <-errCh:
+					if err != nil {
+						t.Fatalf("RecordClusterQuota() returned an unexpected error: %v", err)
+					}
+					break collectLoop
+				default:
+					runtime.Gosched()
+				}
 			}
 
 			updatedLabels, _ := mw.Labels.Load(tt.inputClusterName)
@@ -369,8 +353,10 @@ func TestMetricsWrapper_RecordClusterQuota_UpdateLabels(t *testing.T) {
 }
 
 func TestRecordTopologyMetrics(t *testing.T) {
+	ctx := context.Background()
+	provider, reader := newTestProvider(t)
 	mw := &service.MetricsWrapper{
-		Meter: otel.Meter("powerscale-test"),
+		Meter: provider.Meter("powerscale-test"),
 	}
 	tests := []struct {
 		name    string
@@ -378,25 +364,16 @@ func TestRecordTopologyMetrics(t *testing.T) {
 		metric  *service.TopologyMetricsRecord
 		wantErr bool
 	}{
-		{
-			name: "success",
-			meta: &service.TopologyMeta{
-				PersistentVolume: "test-pv",
-			},
-			metric:  &service.TopologyMetricsRecord{},
-			wantErr: false,
-		},
-		{
-			name:    "unknown meta data type",
-			meta:    "unknown",
-			metric:  &service.TopologyMetricsRecord{},
-			wantErr: true,
-		},
+		{name: "success", meta: &service.TopologyMeta{PersistentVolume: "test-pv"}, metric: &service.TopologyMetricsRecord{}, wantErr: false},
+		{name: "unknown meta data type", meta: "unknown", metric: &service.TopologyMetricsRecord{}, wantErr: true},
 	}
-
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			if err := mw.RecordTopologyMetrics(context.Background(), tt.meta, tt.metric); (err != nil) != tt.wantErr {
+			err := collectUntilDone(ctx, reader, func() error {
+				return mw.RecordTopologyMetrics(ctx, tt.meta, tt.metric)
+			})
+			if (err != nil) != tt.wantErr {
 				t.Errorf("RecordTopologyMetrics() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

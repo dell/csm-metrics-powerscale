@@ -1,5 +1,5 @@
 <!--
-Copyright (c) 2022-2025 Dell Inc., or its subsidiaries. All Rights Reserved.
+Copyright (c) 2022-2026 Dell Inc., or its subsidiaries. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -7,7 +7,6 @@ You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
 -->
-
 
 # Observability Module for PowerScale
 
@@ -17,7 +16,7 @@ You may obtain a copy of the License at
 [![Go version](https://img.shields.io/github/go-mod/go-version/dell/csm-metrics-powerscale)](go.mod)
 [![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/dell/csm-metrics-powerscale?include_prereleases&label=latest&style=flat-square)](https://github.com/dell/csm-metrics-powerscale/releases/latest)
 
-Metrics for PowerScale is part of Dell Container Storage Modules (CSM) for Observability, which provides Kubernetes administrators standardized approaches for storage observability in Kuberenetes environments.
+Metrics for PowerScale is part of Dell Container Storage Modules (CSM) for Observability, which provides Kubernetes administrators standardized approaches for storage observability in Kubernetes environments.
 
 Metrics for PowerScale is an open source distributed solution that provides insight into storage usage and performance as it relates to the CSI (Container Storage Interface) Driver for Dell PowerScale.
 
@@ -33,6 +32,7 @@ Metrics for PowerScale captures telemetry data of storage usage and performance 
 * [Dell support](https://www.dell.com/support/incidents-online/en-us/contactus/product/container-storage-modules)
 * [Security](https://github.com/dell/csm/blob/main/docs/SECURITY.md)
 * [About](#about)
+* [Documentation](#documentation)
 
 ## Building Metrics for PowerScale
 
@@ -71,10 +71,13 @@ This will also provide code coverage statistics for the various Go packages.
 
 ## Versioning
 
-This project is adhering to [Semantic Versioning](https://semver.org/).
+This project is adhering to [Semantic Versioning](https://semver.org).
 
 ## About
 
 Dell Container Storage Modules (CSM) is 100% open source and community-driven. All components are available
 under [Apache 2 License](https://www.apache.org/licenses/LICENSE-2.0.html) on
 GitHub.
+
+## Documentation
+For more detailed information on the driver, please refer to [Container Storage Modules documentation](https://www.dell.com/support/product-details/en-us/product/container-storage-modules/resources/manuals).

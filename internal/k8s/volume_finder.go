@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sirupsen/logrus"
+	"github.com/dell/csmlog"
 
 	corev1 "k8s.io/api/core/v1"
 )
@@ -41,7 +41,6 @@ type VolumeGetter interface {
 type VolumeFinder struct {
 	API         VolumeGetter
 	DriverNames []string
-	Logger      *logrus.Logger
 }
 
 // VolumeInfo contains information about mapping a Persistent Volume to the volume created on a storage system
@@ -74,13 +73,13 @@ func (f VolumeFinder) GetPersistentVolumes(_ context.Context) ([]VolumeInfo, err
 
 	for _, volume := range volumes.Items {
 		if volume.Spec.CSI == nil {
-			f.Logger.Debugf("The PV, %s , is not provisioned by a CSI driver\n", volume.GetName())
+			csmlog.Debugf("The PV, %s , is not provisioned by a CSI driver\n", volume.GetName())
 			continue
 		}
 
 		// Check added to skip PV s which do not have any PVC s
 		if volume.Spec.ClaimRef == nil {
-			f.Logger.Debugf("The PV, %s , do not have a claim \n", volume.GetName())
+			csmlog.Debugf("The PV, %s , do not have a claim \n", volume.GetName())
 			continue
 		}
 

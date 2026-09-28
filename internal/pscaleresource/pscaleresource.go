@@ -25,8 +25,8 @@ import (
 	"strings"
 
 	"github.com/dell/csm-metrics-powerscale/internal/service"
+	"github.com/dell/csmlog"
 	"github.com/dell/gopowerscale"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/grpc/codes"
@@ -46,21 +46,21 @@ const (
 // GetPowerScaleClusters parses config.yaml file, initializes gopowerscale Clients and composes map of clusters for ease of access.
 // It will return cluster that can be used as default as a second return parameter.
 // If config does not have any cluster as a default then the first will be returned as a default.
-func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
+func GetPowerScaleClusters(filePath string) (map[string]*service.PowerScaleCluster, *service.PowerScaleCluster, error) {
 	type config struct {
 		Clusters []*service.PowerScaleCluster `yaml:"isilonClusters"`
 	}
 
 	data, err := os.ReadFile(filepath.Clean(filePath))
 	if err != nil {
-		logger.WithError(err).Errorf("cannot read file %s", filePath)
+		csmlog.Errorf("cannot read file %s: %v", filePath, err)
 		return nil, nil, err
 	}
 
 	var cfg config
 	err = yaml.Unmarshal(data, &cfg)
 	if err != nil {
-		logger.WithError(err).Errorf("cannot unmarshal data")
+		csmlog.Errorf("cannot unmarshal data: %v", err)
 		return nil, nil, err
 	}
 
@@ -87,27 +87,27 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 		cluster.Endpoint = strings.TrimPrefix(cluster.Endpoint, "https://")
 
 		if cluster.EndpointPort == "" {
-			logger.Warningf("endpoint port is empty, use default EndpointPort: %s", defaultEndpointPort)
+			csmlog.Warnf("endpoint port is empty, use default EndpointPort: %s", defaultEndpointPort)
 			cluster.EndpointPort = defaultEndpointPort
 		}
 		if cluster.IsiPath == "" {
-			logger.Warningf("IsiPath is empty, use defaultIsiPath: %s", defaultIsiPath)
+			csmlog.Warnf("IsiPath is empty, use defaultIsiPath: %s", defaultIsiPath)
 			cluster.IsiPath = defaultIsiPath
 		}
 		if cluster.IsiVolumePathPermissions == "" {
-			logger.Warningf("IsiVolumePathPermissions is empty, use defaultIsiPermission: %s", defaultIsiPermission)
+			csmlog.Warnf("IsiVolumePathPermissions is empty, use defaultIsiPermission: %s", defaultIsiPermission)
 			cluster.IsiVolumePathPermissions = defaultIsiPermission
 		}
 
 		cluster.Verbose = uint(viper.GetInt("POWERSCALE_ISICLIENT_VERBOSE")) // #nosec G115 -- This is a false positive
 		if cluster.Verbose != 0 && cluster.Verbose != 1 && cluster.Verbose != 2 {
-			logger.Warningf("POWERSCALE_ISICLIENT_VERBOSE is invalid,setting to defaultVerbose: %d", defaultVerbose)
+			csmlog.Warnf("POWERSCALE_ISICLIENT_VERBOSE is invalid,setting to defaultVerbose: %d", defaultVerbose)
 			cluster.Verbose = defaultVerbose
 		}
 
 		cluster.IsiAuthType = uint8(viper.GetInt("POWERSCALE_ISICLIENT_AUTH_TYPE")) // #nosec G115 -- This is a false positive
 		if cluster.IsiAuthType != 1 && cluster.IsiAuthType != 0 {
-			logger.Warningf("POWERSCALE_ISICLIENT_AUTH_TYPE is invalid, setting it to defaultIsiAuthType: %d", defaultIsiAuthType)
+			csmlog.Warnf("POWERSCALE_ISICLIENT_AUTH_TYPE is invalid, setting it to defaultIsiAuthType: %d", defaultIsiAuthType)
 			cluster.IsiAuthType = defaultIsiAuthType
 		}
 
@@ -118,13 +118,13 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 		case "true":
 			cluster.Insecure = true
 		default:
-			logger.Warningf("POWERSCALE_ISICLIENT_INSECURE is invalid, setting it to defaultInsecure: %t", defaultInsecure)
+			csmlog.Warnf("POWERSCALE_ISICLIENT_INSECURE is invalid, setting it to defaultInsecure: %t", defaultInsecure)
 			cluster.Insecure = defaultInsecure
 		}
 
 		cluster.EndpointURL = fmt.Sprintf("https://%s:%s", cluster.Endpoint, cluster.EndpointPort)
 
-		logger.WithFields(logrus.Fields{
+		csmlog.WithFields(csmlog.Fields{
 			"endpoint": cluster.EndpointURL,
 			"insecure": cluster.Insecure,
 			"username": cluster.Username,
@@ -143,7 +143,8 @@ func GetPowerScaleClusters(filePath string, logger *logrus.Logger) (map[string]*
 			cluster.IsiPath,
 			cluster.IsiVolumePathPermissions,
 			false,
-			cluster.IsiAuthType)
+			cluster.IsiAuthType,
+		)
 		if err != nil {
 			return nil, nil, status.Errorf(codes.FailedPrecondition, "unable to create PowerScale client: %s", err.Error())
 		}

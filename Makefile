@@ -21,7 +21,7 @@ help:
 	@echo
 
 .PHONY: build
-build: 
+build:
 	@$(foreach svc,$(shell ls cmd), CGO_ENABLED=0 GOOS=linux go build -mod=vendor -o ./cmd/${svc}/bin/service ./cmd/${svc}/;)
 	
 .PHONY: clean

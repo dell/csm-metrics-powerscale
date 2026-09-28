@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"github.com/dell/csm-metrics-powerscale/internal/pscaleresource"
-	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 )
@@ -64,7 +63,6 @@ func Test_Run(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			logger := logrus.New()
 			filePath, expectError := test(t)
 
 			fileContentBytes, _ := os.ReadFile(filePath)
@@ -73,7 +71,7 @@ func Test_Run(t *testing.T) {
 			newContent = strings.Replace(newContent, "[serverport]", serverPort, 1)
 			_ = os.WriteFile(filePath, []byte(newContent), 0o600) // #nosec G703 -- This is a false positive as the filepath is hardcoded in the test
 
-			clusters, defaultCluster, err := pscaleresource.GetPowerScaleClusters(filePath, logger)
+			clusters, defaultCluster, err := pscaleresource.GetPowerScaleClusters(filePath)
 
 			if expectError {
 				assert.Nil(t, clusters)
@@ -99,7 +97,8 @@ func getHandler() http.Handler {
 			if isilonRouter == nil {
 				getRouter().ServeHTTP(w, r)
 			}
-		})
+		},
+	)
 
 	return handler
 }
