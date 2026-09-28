@@ -29,8 +29,9 @@ import (
 	"github.com/dell/csm-metrics-powerscale/internal/pscaleresource"
 	"github.com/dell/csm-metrics-powerscale/internal/service"
 	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
+	"github.com/dell/csmlog"
 	"github.com/fsnotify/fsnotify"
-	"github.com/sirupsen/logrus"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/viper"
 	"go.opentelemetry.io/otel"
 )
@@ -45,40 +46,38 @@ const (
 var getPowerScaleClusters = pscaleresource.GetPowerScaleClusters
 
 func main() {
-	logger, config, exporter, powerScaleSvc := initializeComponents()
+	config, exporter, powerScaleSvc := initializeComponents()
 
 	if err := entrypoint.Run(context.Background(), config, exporter, powerScaleSvc); err != nil {
-		logger.WithError(err).Fatal("running service")
+		csmlog.Fatalf("running service: %v", err)
 	}
 }
 
-func initializeComponents() (*logrus.Logger, *entrypoint.Config, *otlexporters.OtlCollectorExporter, *service.PowerScaleService) {
-	logger := setupLogger()
+func initializeComponents() (*entrypoint.Config, *otlexporters.OtlCollectorExporter, *service.PowerScaleService) {
+	initLogging()
 
 	configFileListener := setupConfigFileListener()
 	leaderElector := &k8s.LeaderElector{API: &k8s.LeaderElector{}}
-	config := setupConfig(logger, leaderElector)
+	config := setupConfig(leaderElector)
 	exporter := &otlexporters.OtlCollectorExporter{}
-	powerScaleSvc := setupPowerScaleService(logger)
+	powerScaleSvc := setupPowerScaleService()
 
-	applyInitialConfigUpdates(config, exporter, powerScaleSvc, logger)
+	applyInitialConfigUpdates(config, exporter, powerScaleSvc)
 
 	// Watch for config changes and update settings dynamically
-	setupConfigWatchers(configFileListener, config, exporter, powerScaleSvc, logger)
+	setupConfigWatchers(configFileListener, config, exporter, powerScaleSvc)
 
-	return logger, config, exporter, powerScaleSvc
+	return config, exporter, powerScaleSvc
 }
 
-// setupLogger initializes and configures the logger.
-func setupLogger() *logrus.Logger {
-	logger := logrus.New()
-	loadConfig(logger)
-	updateLoggingSettings(logger)
-	return logger
+// initLogging loads config and applies initial logging settings.
+func initLogging() {
+	loadConfig()
+	updateLoggingSettings()
 }
 
 // loadConfig loads the primary configuration file.
-func loadConfig(_ *logrus.Logger) {
+func loadConfig() {
 	viper.SetConfigFile(defaultConfigFile)
 	if err := viper.ReadInConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "unable to read Config file: %v", err)
@@ -93,11 +92,10 @@ func setupConfigFileListener() *viper.Viper {
 }
 
 // setupConfig creates the main configuration structure.
-func setupConfig(logger *logrus.Logger, leaderElector *k8s.LeaderElector) *entrypoint.Config {
+func setupConfig(leaderElector *k8s.LeaderElector) *entrypoint.Config {
 	return &entrypoint.Config{
 		LeaderElector:     leaderElector,
 		CollectorCertPath: getCollectorCertPath(),
-		Logger:            logger,
 	}
 }
 
@@ -112,61 +110,61 @@ func getCollectorCertPath() string {
 }
 
 // setupPowerScaleService initializes the PowerScale service.
-func setupPowerScaleService(logger *logrus.Logger) *service.PowerScaleService {
+func setupPowerScaleService() *service.PowerScaleService {
 	return &service.PowerScaleService{
 		MetricsWrapper: &service.MetricsWrapper{
 			Meter: otel.Meter("powerscale"),
 		},
-		Logger:             logger,
-		VolumeFinder:       &k8s.VolumeFinder{API: &k8s.API{}, Logger: logger},
-		StorageClassFinder: &k8s.StorageClassFinder{API: &k8s.API{}, Logger: logger},
+		VolumeFinder:       &k8s.VolumeFinder{API: &k8s.API{}},
+		StorageClassFinder: &k8s.StorageClassFinder{API: &k8s.API{}},
 	}
 }
 
 // applyInitialConfigUpdates applies all necessary updates before starting the service.
-func applyInitialConfigUpdates(config *entrypoint.Config, exporter *otlexporters.OtlCollectorExporter, powerScaleSvc *service.PowerScaleService, logger *logrus.Logger) {
-	updateLoggingSettings(logger)
-	updateCollectorAddress(config, exporter, logger)
-	updateMetricsEnabled(config, logger)
-	updateTickIntervals(config, logger)
-	updatePowerScaleConnection(powerScaleSvc, powerScaleSvc.StorageClassFinder.(*k8s.StorageClassFinder), powerScaleSvc.VolumeFinder.(*k8s.VolumeFinder), logger)
-	updateService(powerScaleSvc, logger)
+func applyInitialConfigUpdates(config *entrypoint.Config, exporter *otlexporters.OtlCollectorExporter, powerScaleSvc *service.PowerScaleService) {
+	updateLoggingSettings()
+	updateCollectorAddress(config, exporter)
+	updateMetricsEnabled(config)
+	updateTickIntervals(config)
+	updatePowerScaleConnection(powerScaleSvc, powerScaleSvc.StorageClassFinder.(*k8s.StorageClassFinder), powerScaleSvc.VolumeFinder.(*k8s.VolumeFinder))
+	updateService(powerScaleSvc)
+	updateObservabilityMetrics(config, powerScaleSvc)
 }
 
 // setupConfigWatchers sets up dynamic updates when config files change.
-func setupConfigWatchers(configFileListener *viper.Viper, config *entrypoint.Config, exporter *otlexporters.OtlCollectorExporter, powerScaleSvc *service.PowerScaleService, logger *logrus.Logger) {
+func setupConfigWatchers(configFileListener *viper.Viper, config *entrypoint.Config, exporter *otlexporters.OtlCollectorExporter, powerScaleSvc *service.PowerScaleService) {
 	viper.WatchConfig()
 	viper.OnConfigChange(func(_ fsnotify.Event) {
-		applyInitialConfigUpdates(config, exporter, powerScaleSvc, logger)
+		applyInitialConfigUpdates(config, exporter, powerScaleSvc)
 	})
 
 	configFileListener.WatchConfig()
 	configFileListener.OnConfigChange(func(_ fsnotify.Event) {
-		updatePowerScaleConnection(powerScaleSvc, powerScaleSvc.StorageClassFinder.(*k8s.StorageClassFinder), powerScaleSvc.VolumeFinder.(*k8s.VolumeFinder), logger)
+		updatePowerScaleConnection(powerScaleSvc, powerScaleSvc.StorageClassFinder.(*k8s.StorageClassFinder), powerScaleSvc.VolumeFinder.(*k8s.VolumeFinder))
 	})
 }
 
 // updateLoggingSettings updates logging format and level dynamically.
-func updateLoggingSettings(logger *logrus.Logger) {
+func updateLoggingSettings() {
 	logFormat := viper.GetString("LOG_FORMAT")
 	if strings.EqualFold(logFormat, "json") {
-		logger.SetFormatter(&logrus.JSONFormatter{})
+		csmlog.SetFormat("json")
 	} else {
-		logger.SetFormatter(&logrus.TextFormatter{})
+		csmlog.SetFormat("text")
 	}
 
 	logLevel := viper.GetString("LOG_LEVEL")
-	level, err := logrus.ParseLevel(logLevel)
+	level, err := csmlog.ParseLevel(logLevel)
 	if err != nil {
-		level = logrus.InfoLevel
+		level = csmlog.InfoLevel
 	}
-	logger.SetLevel(level)
+	csmlog.SetLevel(level)
 }
 
-func updatePowerScaleConnection(powerScaleSvc *service.PowerScaleService, storageClassFinder *k8s.StorageClassFinder, volumeFinder *k8s.VolumeFinder, logger *logrus.Logger) {
-	clusters, defaultCluster, err := getPowerScaleClusters(defaultStorageSystemConfigFile, logger)
+func updatePowerScaleConnection(powerScaleSvc *service.PowerScaleService, storageClassFinder *k8s.StorageClassFinder, volumeFinder *k8s.VolumeFinder) {
+	clusters, defaultCluster, err := getPowerScaleClusters(defaultStorageSystemConfigFile)
 	if err != nil {
-		logger.WithError(err).Fatal("initialize clusters in controller service")
+		csmlog.Fatalf("initialize clusters in controller service: %v", err)
 	}
 	powerScaleClients := make(map[string]service.PowerScaleClient)
 	clientIsiPaths := make(map[string]string)
@@ -174,7 +172,7 @@ func updatePowerScaleConnection(powerScaleSvc *service.PowerScaleService, storag
 
 	for clusterName, cluster := range clusters {
 		powerScaleClients[clusterName] = cluster.Client
-		logger.WithField("cluster_name", clusterName).Debug("setting powerscale client from configuration")
+		csmlog.WithFields(csmlog.Fields{"cluster_name": clusterName}).Debug("setting powerscale client from configuration")
 		clientIsiPaths[clusterName] = cluster.IsiPath
 
 		clusterName := k8s.ClusterName{
@@ -185,27 +183,27 @@ func updatePowerScaleConnection(powerScaleSvc *service.PowerScaleService, storag
 	}
 
 	storageClassFinder.ClusterNames = clusterNames
-	powerScaleSvc.PowerScaleClients = powerScaleClients
+	powerScaleSvc.SetPowerScaleClients(powerScaleClients)
 	powerScaleSvc.ClientIsiPaths = clientIsiPaths
 	powerScaleSvc.DefaultPowerScaleCluster = defaultCluster
 
-	updateProvisionerNames(volumeFinder, storageClassFinder, logger)
+	updateProvisionerNames(volumeFinder, storageClassFinder)
 }
 
-func updateCollectorAddress(config *entrypoint.Config, exporter *otlexporters.OtlCollectorExporter, logger *logrus.Logger) {
+func updateCollectorAddress(config *entrypoint.Config, exporter *otlexporters.OtlCollectorExporter) {
 	collectorAddress := viper.GetString("COLLECTOR_ADDR")
 	if collectorAddress == "" {
-		logger.Fatal("COLLECTOR_ADDR is required")
+		csmlog.Fatal("COLLECTOR_ADDR is required")
 	}
 	config.CollectorAddress = collectorAddress
 	exporter.CollectorAddr = collectorAddress
-	logger.WithField("collector_address", collectorAddress).Debug("setting collector address")
+	csmlog.WithFields(csmlog.Fields{"collector_address": collectorAddress}).Debug("setting collector address")
 }
 
-func updateProvisionerNames(volumeFinder *k8s.VolumeFinder, storageClassFinder *k8s.StorageClassFinder, logger *logrus.Logger) {
+func updateProvisionerNames(volumeFinder *k8s.VolumeFinder, storageClassFinder *k8s.StorageClassFinder) {
 	provisionerNamesValue := viper.GetString("provisioner_names")
 	if provisionerNamesValue == "" {
-		logger.Fatal("PROVISIONER_NAMES is required")
+		csmlog.Fatal("PROVISIONER_NAMES is required")
 	}
 	provisionerNames := strings.Split(provisionerNamesValue, ",")
 	volumeFinder.DriverNames = provisionerNames
@@ -214,17 +212,17 @@ func updateProvisionerNames(volumeFinder *k8s.VolumeFinder, storageClassFinder *
 		storageClassFinder.ClusterNames[i].DriverNames = provisionerNames
 	}
 
-	logger.WithField("provisioner_names", provisionerNamesValue).Debug("setting provisioner names")
+	csmlog.WithFields(csmlog.Fields{"provisioner_names": provisionerNamesValue}).Debug("setting provisioner names")
 }
 
-func updateMetricsEnabled(config *entrypoint.Config, logger *logrus.Logger) {
+func updateMetricsEnabled(config *entrypoint.Config) {
 	capacityMetricsEnabled := true
 	capacityMetricsEnabledValue := viper.GetString("POWERSCALE_CAPACITY_METRICS_ENABLED")
 	if capacityMetricsEnabledValue == "false" {
 		capacityMetricsEnabled = false
 	}
 	config.CapacityMetricsEnabled = capacityMetricsEnabled
-	logger.WithField("capacity_metrics_enabled", capacityMetricsEnabled).Debug("setting capacity metrics enabled")
+	csmlog.WithFields(csmlog.Fields{"capacity_metrics_enabled": capacityMetricsEnabled}).Debug("setting capacity metrics enabled")
 
 	performanceMetricsEnabled := true
 	performanceMetricsEnabledValue := viper.GetString("POWERSCALE_PERFORMANCE_METRICS_ENABLED")
@@ -232,7 +230,7 @@ func updateMetricsEnabled(config *entrypoint.Config, logger *logrus.Logger) {
 		performanceMetricsEnabled = false
 	}
 	config.PerformanceMetricsEnabled = performanceMetricsEnabled
-	logger.WithField("performance_metrics_enabled", performanceMetricsEnabled).Debug("setting performance metrics enabled")
+	csmlog.WithFields(csmlog.Fields{"performance_metrics_enabled": performanceMetricsEnabled}).Debug("setting performance metrics enabled")
 
 	topologyMetricsEnabled := true
 	topologyMetricsEnabledValue := viper.GetString("POWERSCALE_TOPOLOGY_METRICS_ENABLED")
@@ -240,71 +238,108 @@ func updateMetricsEnabled(config *entrypoint.Config, logger *logrus.Logger) {
 		topologyMetricsEnabled = false
 	}
 	config.TopologyMetricsEnabled = topologyMetricsEnabled
-	logger.WithField("topology_metrics_enabled", topologyMetricsEnabled).Debug("setting topology metrics enabled")
+	csmlog.WithFields(csmlog.Fields{"topology_metrics_enabled": topologyMetricsEnabled}).Debug("setting topology metrics enabled")
 }
 
-func updateTickIntervals(config *entrypoint.Config, logger *logrus.Logger) {
+func updateTickIntervals(config *entrypoint.Config) {
 	quotaCapacityTickInterval := defaultTickInterval
 	quotaCapacityPollFrequencySeconds := viper.GetString("POWERSCALE_QUOTA_CAPACITY_POLL_FREQUENCY")
 	if quotaCapacityPollFrequencySeconds != "" {
 		numSeconds, err := strconv.Atoi(quotaCapacityPollFrequencySeconds)
 		if err != nil {
-			logger.WithError(err).Fatal("POWERSCALE_QUOTA_CAPACITY_POLL_FREQUENCY was not set to a valid number")
+			csmlog.Fatalf("POWERSCALE_QUOTA_CAPACITY_POLL_FREQUENCY was not set to a valid number: %v", err)
 		}
 		quotaCapacityTickInterval = time.Duration(numSeconds) * time.Second
 	}
 	config.QuotaCapacityTickInterval = quotaCapacityTickInterval
-	logger.WithField("quota_capacity_tick_interval", fmt.Sprintf("%v", quotaCapacityTickInterval)).Debug("setting quota capacity tick interval")
+	csmlog.WithFields(csmlog.Fields{"quota_capacity_tick_interval": fmt.Sprintf("%v", quotaCapacityTickInterval)}).Debug("setting quota capacity tick interval")
 
 	clusterCapacityTickInterval := defaultTickInterval
 	clusterCapacityPollFrequencySeconds := viper.GetString("POWERSCALE_CLUSTER_CAPACITY_POLL_FREQUENCY")
 	if clusterCapacityPollFrequencySeconds != "" {
 		numSeconds, err := strconv.Atoi(clusterCapacityPollFrequencySeconds)
 		if err != nil {
-			logger.WithError(err).Fatal("POWERSCALE_CLUSTER_CAPACITY_POLL_FREQUENCY was not set to a valid number")
+			csmlog.Fatalf("POWERSCALE_CLUSTER_CAPACITY_POLL_FREQUENCY was not set to a valid number: %v", err)
 		}
 		clusterCapacityTickInterval = time.Duration(numSeconds) * time.Second
 	}
 	config.ClusterCapacityTickInterval = clusterCapacityTickInterval
-	logger.WithField("cluster_capacity_tick_interval", fmt.Sprintf("%v", clusterCapacityTickInterval)).Debug("setting cluster capacity tick interval")
+	csmlog.WithFields(csmlog.Fields{"cluster_capacity_tick_interval": fmt.Sprintf("%v", clusterCapacityTickInterval)}).Debug("setting cluster capacity tick interval")
 
 	clusterPerformanceTickInterval := defaultTickInterval
 	clusterPerformancePollFrequencySeconds := viper.GetString("POWERSCALE_CLUSTER_PERFORMANCE_POLL_FREQUENCY")
 	if clusterPerformancePollFrequencySeconds != "" {
 		numSeconds, err := strconv.Atoi(clusterPerformancePollFrequencySeconds)
 		if err != nil {
-			logger.WithError(err).Fatal("POWERSCALE_CLUSTER_PERFORMANCE_POLL_FREQUENCY was not set to a valid number")
+			csmlog.Fatalf("POWERSCALE_CLUSTER_PERFORMANCE_POLL_FREQUENCY was not set to a valid number: %v", err)
 		}
 		clusterPerformanceTickInterval = time.Duration(numSeconds) * time.Second
 	}
 	config.ClusterPerformanceTickInterval = clusterPerformanceTickInterval
-	logger.WithField("cluster_performance_tick_interval", fmt.Sprintf("%v", clusterPerformanceTickInterval)).Debug("setting cluster performance tick interval")
+	csmlog.WithFields(csmlog.Fields{"cluster_performance_tick_interval": fmt.Sprintf("%v", clusterPerformanceTickInterval)}).Debug("setting cluster performance tick interval")
 
 	topologyMetricsTickInterval := defaultTickInterval
 	topologyMetricsPollFrequencySeconds := viper.GetString("POWERSCALE_TOPOLOGY_METRICS_POLL_FREQUENCY")
 	if topologyMetricsPollFrequencySeconds != "" {
 		numSeconds, err := strconv.Atoi(topologyMetricsPollFrequencySeconds)
 		if err != nil {
-			logger.WithError(err).Fatal("POWERSCALE_TOPOLOGY_METRICS_POLL_FREQUENCY was not set to a valid number")
+			csmlog.Fatalf("POWERSCALE_TOPOLOGY_METRICS_POLL_FREQUENCY was not set to a valid number: %v", err)
 		}
 		topologyMetricsTickInterval = time.Duration(numSeconds) * time.Second
 	}
 	config.TopologyMetricsTickInterval = topologyMetricsTickInterval
-	logger.WithField("cluster_performance_tick_interval", fmt.Sprintf("%v", topologyMetricsTickInterval)).Debug("setting cluster performance tick interval")
+	csmlog.WithFields(csmlog.Fields{"cluster_performance_tick_interval": fmt.Sprintf("%v", topologyMetricsTickInterval)}).Debug("setting cluster performance tick interval")
 }
 
-func updateService(pscaleSvc *service.PowerScaleService, logger *logrus.Logger) {
+func getObservabilityMetricsListenAddress() string {
+	port := viper.GetString("X_CSI_METRICS_PORT")
+	if port == "" {
+		return entrypoint.DefaultPrometheusListenAddress
+	}
+	if strings.HasPrefix(port, ":") {
+		return port
+	}
+	return ":" + port
+}
+
+func getObservabilityMetricsTLSFiles() (string, string) {
+	certFile := strings.TrimSpace(os.Getenv("X_CSI_METRICS_TLS_CERT_FILE"))
+	keyFile := strings.TrimSpace(os.Getenv("X_CSI_METRICS_TLS_KEY_FILE"))
+	return certFile, keyFile
+}
+
+func updateObservabilityMetrics(config *entrypoint.Config, powerScaleSvc *service.PowerScaleService) {
+	if viper.GetString("X_CSI_METRICS_ENABLED") != "true" {
+		config.PrometheusMetricsEnabled = false
+		config.PrometheusRegistry = nil
+		config.PrometheusListenAddress = ""
+		config.PrometheusCertFile = ""
+		config.PrometheusKeyFile = ""
+		powerScaleSvc.ObsInstrumenter = nil
+		return
+	}
+	if config.PrometheusRegistry == nil {
+		config.PrometheusRegistry = prometheus.NewRegistry()
+		powerScaleSvc.ObsInstrumenter = service.NewPSCObsInstrumenter(config.PrometheusRegistry)
+		csmlog.Info("observability self-metrics enabled: prometheus registry and instrumenter initialized")
+	}
+	config.PrometheusMetricsEnabled = true
+	config.PrometheusListenAddress = getObservabilityMetricsListenAddress()
+	config.PrometheusCertFile, config.PrometheusKeyFile = getObservabilityMetricsTLSFiles()
+}
+
+func updateService(pscaleSvc *service.PowerScaleService) {
 	maxPowerScaleConcurrentRequests := service.DefaultMaxPowerScaleConnections
 	maxPowerScaleConcurrentRequestsVar := viper.GetString("POWERSCALE_MAX_CONCURRENT_QUERIES")
 	if maxPowerScaleConcurrentRequestsVar != "" {
 		maxPowerScaleConcurrentRequests, err := strconv.Atoi(maxPowerScaleConcurrentRequestsVar)
 		if err != nil {
-			logger.WithError(err).Fatal("POWERSCALE_MAX_CONCURRENT_QUERIES was not set to a valid number")
+			csmlog.Fatalf("POWERSCALE_MAX_CONCURRENT_QUERIES was not set to a valid number: %v", err)
 		}
 		if maxPowerScaleConcurrentRequests <= 0 {
-			logger.WithError(err).Fatal("POWERSCALE_MAX_CONCURRENT_QUERIES value was invalid (<= 0)")
+			csmlog.Fatalf("POWERSCALE_MAX_CONCURRENT_QUERIES value was invalid (<= 0): %v", err)
 		}
 	}
 	pscaleSvc.MaxPowerScaleConnections = maxPowerScaleConcurrentRequests
-	logger.WithField("max_connections", maxPowerScaleConcurrentRequests).Debug("setting max powerscale connections")
+	csmlog.WithFields(csmlog.Fields{"max_connections": maxPowerScaleConcurrentRequests}).Debug("setting max powerscale connections")
 }

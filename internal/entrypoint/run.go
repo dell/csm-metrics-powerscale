@@ -18,15 +18,19 @@ package entrypoint
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"runtime"
 	"time"
 
+	csmserver "github.com/dell/csm-metrics-common/pkg/server"
 	pscaleService "github.com/dell/csm-metrics-powerscale/internal/service"
 	otlexporters "github.com/dell/csm-metrics-powerscale/opentelemetry/exporters"
 
-	"github.com/sirupsen/logrus"
+	"github.com/dell/csmlog"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -45,6 +49,19 @@ const (
 // ConfigValidatorFunc is used to override config validation in testing
 var ConfigValidatorFunc = ValidateConfig
 
+// DefaultPrometheusListenAddress is the address the Prometheus metrics server binds to
+const DefaultPrometheusListenAddress = ":8443"
+
+func recordPowerScaleExportFailure(powerScaleSvc pscaleService.Service) {
+	inst, ok := powerScaleSvc.GetObsInstrumenter().(*pscaleService.PSCObsInstrumenter)
+	if !ok || inst == nil {
+		return
+	}
+	for clusterName := range powerScaleSvc.GetPowerScaleClients() {
+		inst.RecordExportSuccess(clusterName, "failure")
+	}
+}
+
 // Config holds data that will be used by the service
 type Config struct {
 	LeaderElector                  pscaleService.LeaderElector
@@ -57,7 +74,11 @@ type Config struct {
 	TopologyMetricsEnabled         bool
 	CollectorAddress               string
 	CollectorCertPath              string
-	Logger                         *logrus.Logger
+	PrometheusMetricsEnabled       bool
+	PrometheusRegistry             *prometheus.Registry
+	PrometheusListenAddress        string
+	PrometheusCertFile             string
+	PrometheusKeyFile              string
 }
 
 // Run is the entry point for starting the service
@@ -66,9 +87,13 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 	if err != nil {
 		return err
 	}
-	logger := config.Logger
-
 	errCh := make(chan error, 1)
+
+	if config.PrometheusMetricsEnabled && config.PrometheusRegistry != nil {
+		go func() {
+			errCh <- startPrometheusMetricsServer(ctx, config)
+		}()
+	}
 
 	go func() {
 		powerscaleEndpoint := os.Getenv("POWERSCALE_METRICS_ENDPOINT")
@@ -98,12 +123,19 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 			options = append(options, otlpmetricgrpc.WithInsecure())
 		}
 
+		// Wire OTEL export failure callback to observability metrics
+		if otlExporter, ok := exporter.(*otlexporters.OtlCollectorExporter); ok {
+			otlExporter.SetExportFailureRecorder(func() {
+				recordPowerScaleExportFailure(powerScaleSvc)
+			})
+		}
+
 		errCh <- exporter.InitExporter(options...)
 	}()
 
 	defer func() {
 		if err := exporter.StopExporter(); err != nil {
-			logger.WithError(err).Error("failed to stop exporter")
+			csmlog.Errorf("failed to stop exporter: %v", err)
 		}
 	}()
 
@@ -123,42 +155,42 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 		select {
 		case <-clusterCapacityTicker.C:
 			if !config.LeaderElector.IsLeader() {
-				logger.Info("not leader pod to collect metrics")
+				csmlog.Info("not leader pod to collect metrics")
 				continue
 			}
 			if !config.CapacityMetricsEnabled {
-				logger.Info("powerscale cluster capacity metrics collection is disabled")
+				csmlog.Info("powerscale cluster capacity metrics collection is disabled")
 				continue
 			}
 
 			powerScaleSvc.ExportClusterCapacityMetrics(ctx)
 		case <-clusterPerformanceTicker.C:
 			if !config.LeaderElector.IsLeader() {
-				logger.Info("not leader pod to collect metrics")
+				csmlog.Info("not leader pod to collect metrics")
 				continue
 			}
 			if !config.PerformanceMetricsEnabled {
-				logger.Info("powerscale cluster performance metrics collection is disabled")
+				csmlog.Info("powerscale cluster performance metrics collection is disabled")
 				continue
 			}
 			powerScaleSvc.ExportClusterPerformanceMetrics(ctx)
 		case <-quotaCapacityTicker.C:
 			if !config.LeaderElector.IsLeader() {
-				logger.Info("not leader pod to collect metrics")
+				csmlog.Info("not leader pod to collect metrics")
 				continue
 			}
 			if !config.CapacityMetricsEnabled {
-				logger.Info("powerscale quota capacity metrics collection is disabled")
+				csmlog.Info("powerscale quota capacity metrics collection is disabled")
 				continue
 			}
 			powerScaleSvc.ExportQuotaMetrics(ctx)
 		case <-topologyMetricsTicker.C:
 			if !config.LeaderElector.IsLeader() {
-				logger.Info("not leader pod to collect metrics")
+				csmlog.Info("not leader pod to collect metrics")
 				continue
 			}
 			if !config.TopologyMetricsEnabled {
-				logger.Info("powerscale topology metrics collection is disabled")
+				csmlog.Info("powerscale topology metrics collection is disabled")
 				continue
 			}
 			powerScaleSvc.ExportTopologyMetrics(ctx)
@@ -191,6 +223,30 @@ func Run(ctx context.Context, config *Config, exporter otlexporters.Otlexporter,
 	}
 }
 
+func startPrometheusMetricsServer(ctx context.Context, config *Config) error {
+	addr := config.PrometheusListenAddress
+	if addr == "" {
+		addr = DefaultPrometheusListenAddress
+	}
+
+	if _, err := csmserver.TLSConfig(config.PrometheusCertFile, config.PrometheusKeyFile); err != nil {
+		return fmt.Errorf("invalid prometheus metrics TLS configuration: %w", err)
+	}
+
+	srv := csmserver.NewMetricsServer(csmserver.Config{
+		Port:     addr,
+		CertFile: config.PrometheusCertFile,
+		KeyFile:  config.PrometheusKeyFile,
+		Registry: config.PrometheusRegistry,
+	})
+
+	err := srv.Start(ctx)
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("prometheus metrics server: %w", err)
+	}
+	return nil
+}
+
 // ValidateConfig will validate the configuration and return any errors
 func ValidateConfig(config *Config) error {
 	if config == nil {
@@ -211,6 +267,10 @@ func ValidateConfig(config *Config) error {
 
 	if config.TopologyMetricsTickInterval > MaximumTickInterval || config.TopologyMetricsTickInterval < MinimumTickInterval {
 		return fmt.Errorf("topology metrics polling frequency not within allowed range of %v and %v", MinimumTickInterval.String(), MaximumTickInterval.String())
+	}
+
+	if (config.PrometheusCertFile == "") != (config.PrometheusKeyFile == "") {
+		return fmt.Errorf("prometheus metrics TLS cert and key must both be provided")
 	}
 
 	return nil

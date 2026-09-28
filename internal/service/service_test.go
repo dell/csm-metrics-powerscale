@@ -30,7 +30,6 @@ import (
 
 	"github.com/dell/csm-metrics-powerscale/internal/service"
 	"github.com/dell/csm-metrics-powerscale/internal/service/mocks"
-	"github.com/sirupsen/logrus"
 
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
 	"go.uber.org/mock/gomock"
@@ -86,8 +85,8 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 	var client2MockQuotaList gopowerscale.QuotaList
 	_ = json.Unmarshal(contentBytes2, &client2MockQuotaList)
 
-	tests := map[string]func(t *testing.T) (service.PowerScaleService, *gomock.Controller){
-		"success": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+	tests := map[string]func(t *testing.T) (*service.PowerScaleService, *gomock.Controller){
+		"success": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			metrics := mocks.NewMockMetricsRecorder(ctrl)
 			metrics.EXPECT().RecordVolumeQuota(gomock.Any(), gomock.Any(), gomock.Any()).Times(3)
@@ -132,7 +131,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			clients["cluster1"] = client1
 			clients["cluster2"] = client2
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     metrics,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -140,7 +139,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			}
 			return service, ctrl
 		},
-		"success but volume isiPath is defaultIsiPath": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"success but volume isiPath is defaultIsiPath": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			metrics := mocks.NewMockMetricsRecorder(ctrl)
 			metrics.EXPECT().RecordVolumeQuota(gomock.Any(), gomock.Any(), gomock.Any()).Times(1)
@@ -180,7 +179,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			client1.EXPECT().GetAllQuotas(gomock.Any()).Return(client1MockQuotaList, nil).Times(1)
 			clients["cluster1"] = client1
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     metrics,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -190,7 +189,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			service.ClientIsiPaths["cluster1"] = "/ifs/data/csi"
 			return service, ctrl
 		},
-		"quota metrics not pushed if error getting quota": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"quota metrics not pushed if error getting quota": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			metrics := mocks.NewMockMetricsRecorder(ctrl)
 			metrics.EXPECT().RecordVolumeQuota(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -219,7 +218,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			client1.EXPECT().GetAllQuotas(gomock.Any()).Return(nil, errors.New("error")).Times(1)
 			clients["cluster1"] = client1
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     metrics,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -228,7 +227,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 
 			return service, ctrl
 		},
-		"quota metrics not pushed if no cluster name in volume handle": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"quota metrics not pushed if no cluster name in volume handle": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			metrics := mocks.NewMockMetricsRecorder(ctrl)
 			metrics.EXPECT().RecordVolumeQuota(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -257,7 +256,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			client1.EXPECT().GetAllQuotas(gomock.Any()).Times(1)
 			clients["cluster2"] = client1
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     metrics,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -265,7 +264,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			}
 			return service, ctrl
 		},
-		"metrics not pushed if volume handle is invalid": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"metrics not pushed if volume handle is invalid": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			metrics := mocks.NewMockMetricsRecorder(ctrl)
 			metrics.EXPECT().RecordVolumeQuota(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -306,7 +305,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			client1.EXPECT().GetAllQuotas(gomock.Any()).Times(1)
 			clients["cluster1"] = client1
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     metrics,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -314,7 +313,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			}
 			return service, ctrl
 		},
-		"quota metrics not pushed if volume finder returns error": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"quota metrics not pushed if volume finder returns error": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			metrics := mocks.NewMockMetricsRecorder(ctrl)
 			metrics.EXPECT().RecordVolumeQuota(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -330,7 +329,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			client1.EXPECT().GetAllQuotas(gomock.Any()).Times(0)
 			clients["cluster1"] = client1
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     metrics,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -338,7 +337,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			}
 			return service, ctrl
 		},
-		"volume quota metrics not pushed if storage class finder returns error": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"volume quota metrics not pushed if storage class finder returns error": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			metrics := mocks.NewMockMetricsRecorder(ctrl)
 			metrics.EXPECT().RecordVolumeQuota(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -354,7 +353,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			client1.EXPECT().GetAllQuotas(gomock.Any()).Return(client1MockQuotaList, nil).Times(1)
 			clients["cluster1"] = client1
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     metrics,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -362,7 +361,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			}
 			return service, ctrl
 		},
-		"quota metrics not pushed if metrics wrapper is nil": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"quota metrics not pushed if metrics wrapper is nil": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			volFinder := mocks.NewMockVolumeFinder(ctrl)
 			volFinder.EXPECT().GetPersistentVolumes(gomock.Any()).Times(0)
@@ -374,7 +373,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			client1.EXPECT().GetAllQuotas(gomock.Any()).Times(0)
 			clients["cluster1"] = client1
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     nil,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -382,7 +381,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			}
 			return service, ctrl
 		},
-		"quota metrics not pushed with 0 volumes": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"quota metrics not pushed with 0 volumes": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			metrics := mocks.NewMockMetricsRecorder(ctrl)
 			metrics.EXPECT().RecordVolumeQuota(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
@@ -411,7 +410,7 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 			client1.EXPECT().GetAllQuotas(gomock.Any()).Times(1)
 			clients["cluster1"] = client1
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     metrics,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -424,7 +423,6 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			service, ctrl := tc(t)
-			service.Logger = logrus.New()
 			service.ExportQuotaMetrics(context.Background())
 			ctrl.Finish()
 		})
@@ -432,8 +430,8 @@ func Test_ExportVolumeMetrics(t *testing.T) {
 }
 
 func Test_ExportClusterMetrics(t *testing.T) {
-	tests := map[string]func(t *testing.T) (service.PowerScaleService, *gomock.Controller){
-		"success": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+	tests := map[string]func(t *testing.T) (*service.PowerScaleService, *gomock.Controller){
+		"success": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			metrics := mocks.NewMockMetricsRecorder(ctrl)
 			volFinder := mocks.NewMockVolumeFinder(ctrl)
@@ -452,7 +450,7 @@ func Test_ExportClusterMetrics(t *testing.T) {
 			c.EXPECT().GetFloatStatistics(gomock.Any(), gomock.Any()).Return(stats, nil).Times(2)
 			clients["cluster1"] = c
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     metrics,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -460,7 +458,7 @@ func Test_ExportClusterMetrics(t *testing.T) {
 			}
 			return service, ctrl
 		},
-		"metrics not pushed if metrics wrapper is nil": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"metrics not pushed if metrics wrapper is nil": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			volFinder := mocks.NewMockVolumeFinder(ctrl)
 			scFinder := mocks.NewMockStorageClassFinder(ctrl)
@@ -469,7 +467,7 @@ func Test_ExportClusterMetrics(t *testing.T) {
 			c := mocks.NewMockPowerScaleClient(ctrl)
 			clients["cluster1"] = c
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     nil,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -477,7 +475,7 @@ func Test_ExportClusterMetrics(t *testing.T) {
 			}
 			return service, ctrl
 		},
-		"set MaxPowerScaleConnections to default": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"set MaxPowerScaleConnections to default": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			volFinder := mocks.NewMockVolumeFinder(ctrl)
 			scFinder := mocks.NewMockStorageClassFinder(ctrl)
@@ -486,7 +484,7 @@ func Test_ExportClusterMetrics(t *testing.T) {
 			c := mocks.NewMockPowerScaleClient(ctrl)
 			clients["cluster1"] = c
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:           nil,
 				VolumeFinder:             volFinder,
 				StorageClassFinder:       scFinder,
@@ -499,7 +497,6 @@ func Test_ExportClusterMetrics(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			service, ctrl := tc(t)
-			service.Logger = logrus.New()
 			service.ExportClusterCapacityMetrics(context.Background())
 			service.ExportClusterPerformanceMetrics(context.Background())
 			ctrl.Finish()
@@ -508,33 +505,33 @@ func Test_ExportClusterMetrics(t *testing.T) {
 }
 
 func Test_ExportTopologyMetrics(t *testing.T) {
-	tests := map[string]func(t *testing.T) (service.PowerScaleService, *gomock.Controller){
-		"metrics not pushed if metrics wrapper is nil": func(t *testing.T) (service.PowerScaleService, *gomock.Controller) {
+	tests := map[string]func(t *testing.T) (*service.PowerScaleService, *gomock.Controller){
+		"metrics not pushed if metrics wrapper is nil": func(t *testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			volFinder := mocks.NewMockVolumeFinder(ctrl)
 
 			volFinder.EXPECT().GetPersistentVolumes(gomock.Any()).Return([]k8s.VolumeInfo{}, nil).Times(0)
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper: nil,
 				VolumeFinder:   volFinder,
 			}
 			return service, ctrl
 		},
-		"error getting persistent volumes": func(t *testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"error getting persistent volumes": func(t *testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			metrics := mocks.NewMockMetricsRecorder(ctrl)
 			volFinder := mocks.NewMockVolumeFinder(ctrl)
 
 			volFinder.EXPECT().GetPersistentVolumes(gomock.Any()).Return([]k8s.VolumeInfo{}, fmt.Errorf("test error")).Times(1)
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper: metrics,
 				VolumeFinder:   volFinder,
 			}
 			return service, ctrl
 		},
-		"success": func(*testing.T) (service.PowerScaleService, *gomock.Controller) {
+		"success": func(*testing.T) (*service.PowerScaleService, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			metrics := mocks.NewMockMetricsRecorder(ctrl)
 			volFinder := mocks.NewMockVolumeFinder(ctrl)
@@ -563,7 +560,7 @@ func Test_ExportTopologyMetrics(t *testing.T) {
 			var stats gopowerscale.FloatStats
 			_ = json.Unmarshal(contentBytes, &stats)
 
-			service := service.PowerScaleService{
+			service := &service.PowerScaleService{
 				MetricsWrapper:     metrics,
 				VolumeFinder:       volFinder,
 				StorageClassFinder: scFinder,
@@ -574,7 +571,6 @@ func Test_ExportTopologyMetrics(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			service, ctrl := tc(t)
-			service.Logger = logrus.New()
 			defer ctrl.Finish()
 
 			service.ExportTopologyMetrics(context.Background())

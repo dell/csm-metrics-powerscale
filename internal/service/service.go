@@ -19,13 +19,14 @@ package service
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
+	"github.com/dell/csmlog"
 	"github.com/dell/gopowerscale"
-	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/storage/v1"
 )
 
@@ -37,7 +38,11 @@ const (
 	// ExpectedVolumeHandleProperties is the number of properties that the VolumeHandle contains
 	ExpectedVolumeHandleProperties = 4
 	// DirectoryQuotaType is the type of Quota corresponding to a volume
-	DirectoryQuotaType = "directory"
+	DirectoryQuotaType               = "directory"
+	obsClusterQuotaMetricCount       = 2
+	obsVolumeQuotaMetricCount        = 4
+	obsClusterCapacityMetricCount    = 3
+	obsClusterPerformanceMetricCount = 5
 )
 
 // Service contains operations that would be used to interact with a PowerScale system
@@ -48,6 +53,8 @@ type Service interface {
 	ExportClusterCapacityMetrics(context.Context)
 	ExportClusterPerformanceMetrics(context.Context)
 	ExportTopologyMetrics(context.Context)
+	GetObsInstrumenter() interface{}
+	GetPowerScaleClients() map[string]PowerScaleClient
 }
 
 // PowerScaleClient contains operations for accessing the PowerScale API
@@ -61,13 +68,33 @@ type PowerScaleClient interface {
 // PowerScaleService represents the service for getting metrics data for a PowerScale system
 type PowerScaleService struct {
 	MetricsWrapper           MetricsRecorder
+	ObsInstrumenter          *PSCObsInstrumenter
 	MaxPowerScaleConnections int
-	Logger                   *logrus.Logger
 	PowerScaleClients        map[string]PowerScaleClient
 	ClientIsiPaths           map[string]string
 	DefaultPowerScaleCluster *PowerScaleCluster
 	VolumeFinder             VolumeFinder
 	StorageClassFinder       StorageClassFinder
+	mu                       sync.RWMutex
+}
+
+// GetObsInstrumenter returns the observability instrumenter for this service
+func (s *PowerScaleService) GetObsInstrumenter() interface{} {
+	return s.ObsInstrumenter
+}
+
+// GetPowerScaleClients returns a snapshot of the PowerScale clients map.
+func (s *PowerScaleService) GetPowerScaleClients() map[string]PowerScaleClient {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return maps.Clone(s.PowerScaleClients)
+}
+
+// SetPowerScaleClients replaces the PowerScale clients map with a defensive copy.
+func (s *PowerScaleService) SetPowerScaleClients(clients map[string]PowerScaleClient) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.PowerScaleClients = maps.Clone(clients)
 }
 
 // VolumeFinder is used to find volume information in kubernetes
@@ -133,74 +160,106 @@ type TopologyMetricsRecord struct {
 	pvAvailable  int64
 }
 
+type obsExportResult struct {
+	clusterName string
+	metricCount int
+	exported    bool
+}
+
 // ExportQuotaMetrics records quota metrics for the given list of Volumes
 func (s *PowerScaleService) ExportQuotaMetrics(ctx context.Context) {
 	start := time.Now()
 	defer s.timeSince(start, "ExportQuotaMetrics")
 
 	if s.MetricsWrapper == nil {
-		s.Logger.Warn("no MetricsWrapper provided for getting ExportQuotaMetrics")
+		csmlog.Warn("no MetricsWrapper provided for getting ExportQuotaMetrics")
 		return
 	}
 
 	if s.MaxPowerScaleConnections == 0 {
-		s.Logger.Debug("Using DefaultMaxPowerScaleConnections")
+		csmlog.Debug("Using DefaultMaxPowerScaleConnections")
 		s.MaxPowerScaleConnections = DefaultMaxPowerScaleConnections
 	}
 
 	pvs, err := s.VolumeFinder.GetPersistentVolumes(ctx)
 	if err != nil {
-		s.Logger.WithError(err).Error("getting persistent volumes")
+		csmlog.Errorf("getting persistent volumes: %v", err)
 		return
 	}
 
+	clients := s.GetPowerScaleClients()
+	clusterConnected := make(map[string]bool)
+	collectionCounts := make(map[string]int)
+	exportFailed := make(map[string]bool)
 	cluster2Quotas := make(map[string]gopowerscale.QuotaList)
-	for clusterName, client := range s.PowerScaleClients {
+	for clusterName, client := range clients {
 		quotaList, err := client.GetAllQuotas(ctx)
 		if err != nil {
-			s.Logger.WithError(err).WithField("cluster_name", clusterName).Error("getting quotas")
+			csmlog.Errorf("getting quotas for cluster %s: %v", clusterName, err)
+			clusterConnected[clusterName] = false
 			continue
 		}
+		clusterConnected[clusterName] = true
 		cluster2Quotas[clusterName] = quotaList
 	}
 
+	volumeQuotaMetrics := make([]*VolumeQuotaMetricsRecord, 0)
+	for metrics := range s.gatherVolumeQuotaMetrics(ctx, cluster2Quotas, s.volumeServer(ctx, pvs)) {
+		volumeQuotaMetrics = append(volumeQuotaMetrics, metrics)
+	}
+
+	clusterQuotaMetrics := make([]*ClusterQuotaRecord, 0)
+	for metrics := range s.gatherClusterQuotaMetrics(ctx, cluster2Quotas) {
+		clusterQuotaMetrics = append(clusterQuotaMetrics, metrics)
+	}
+
+	processingStart := time.Now()
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	wg.Add(2)
 	go func() {
-		for range s.pushVolumeQuotaMetrics(ctx, s.gatherVolumeQuotaMetrics(ctx, cluster2Quotas, s.volumeServer(ctx, pvs))) {
-			// consume the channel until it is empty and closed
-		} // revive:disable-line:empty-block
+		for result := range s.pushVolumeQuotaMetrics(ctx, s.volumeQuotaMetricsServer(volumeQuotaMetrics)) {
+			mu.Lock()
+			collectionCounts[result.clusterName] += result.metricCount
+			exportFailed[result.clusterName] = exportFailed[result.clusterName] || !result.exported
+			mu.Unlock()
+		}
 		wg.Done()
 	}()
 
 	go func() {
-		for range s.pushClusterQuotaMetrics(ctx, s.gatherClusterQuotaMetrics(ctx, cluster2Quotas)) {
-			// consume the channel until it is empty and closed
-		} // revive:disable-line:empty-block
+		for result := range s.pushClusterQuotaMetrics(ctx, s.clusterQuotaServer(clusterQuotaMetrics)) {
+			mu.Lock()
+			collectionCounts[result.clusterName] += result.metricCount
+			exportFailed[result.clusterName] = exportFailed[result.clusterName] || !result.exported
+			mu.Unlock()
+		}
 		wg.Done()
 	}()
 
 	wg.Wait()
+
+	processingLatency := time.Since(processingStart)
+	s.recordObservabilityMetrics(time.Since(start), processingLatency, clusterConnected, collectionCounts, exportFailed)
 }
 
 // pushClusterQuotaMetrics will push the provided channel of cluster quota metrics to a data collector
-func (s *PowerScaleService) pushClusterQuotaMetrics(ctx context.Context, clusterQuotaMetrics <-chan *ClusterQuotaRecord) <-chan string {
-	start := time.Now()
-	defer s.timeSince(start, "pushClusterQuotaMetrics")
+func (s *PowerScaleService) pushClusterQuotaMetrics(ctx context.Context, clusterQuotaMetrics <-chan *ClusterQuotaRecord) <-chan obsExportResult {
 	var wg sync.WaitGroup
 
-	ch := make(chan string)
+	ch := make(chan obsExportResult)
 	go func() {
+		start := time.Now()
+		defer s.timeSince(start, "pushClusterQuotaMetrics")
 		for metrics := range clusterQuotaMetrics {
 			wg.Add(1)
 			go func(metrics *ClusterQuotaRecord) {
 				defer wg.Done()
 				err := s.MetricsWrapper.RecordClusterQuota(ctx, metrics.clusterMeta, metrics)
 				if err != nil {
-					s.Logger.WithError(err).WithField("cluster_name", metrics.clusterMeta.ClusterName).Error("recording quota metrics for cluster")
-				} else {
-					ch <- metrics.clusterMeta.ClusterName
+					csmlog.Errorf("recording quota metrics for cluster %s: %v", metrics.clusterMeta.ClusterName, err)
 				}
+				ch <- obsExportResult{clusterName: metrics.clusterMeta.ClusterName, metricCount: obsClusterQuotaMetricCount, exported: err == nil}
 			}(metrics)
 		}
 		wg.Wait()
@@ -212,15 +271,15 @@ func (s *PowerScaleService) pushClusterQuotaMetrics(ctx context.Context, cluster
 
 // gatherClusterQuotaMetrics will return a channel of volume metrics based on the input of volumes
 func (s *PowerScaleService) gatherClusterQuotaMetrics(_ context.Context, cluster2Quotas map[string]gopowerscale.QuotaList) <-chan *ClusterQuotaRecord {
-	start := time.Now()
-	defer s.timeSince(start, "gatherClusterQuotaMetrics")
-
 	ch := make(chan *ClusterQuotaRecord)
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, s.MaxPowerScaleConnections)
 
 	go func() {
-		for clusterName := range s.PowerScaleClients {
+		start := time.Now()
+		defer s.timeSince(start, "gatherClusterQuotaMetrics")
+		clients := s.GetPowerScaleClients()
+		for clusterName := range clients {
 			sem <- struct{}{}
 			wg.Add(1)
 			meta := ClusterMeta{ClusterName: clusterName}
@@ -251,7 +310,7 @@ func (s *PowerScaleService) gatherClusterQuotaMetrics(_ context.Context, cluster
 					totalHardQuota:    totalHardQuota,
 					totalHardQuotaPct: totalHardQuotaPct,
 				}
-				s.Logger.Debugf("cluster quota metrics %+v", *metric)
+				csmlog.Debugf("cluster quota metrics %+v", *metric)
 
 				ch <- metric
 			}(meta)
@@ -305,22 +364,65 @@ func (s *PowerScaleService) volumeServer(_ context.Context, volumes []k8s.Volume
 	return volumeChannel
 }
 
+func (s *PowerScaleService) clusterQuotaServer(metrics []*ClusterQuotaRecord) <-chan *ClusterQuotaRecord {
+	ch := make(chan *ClusterQuotaRecord, len(metrics))
+	go func() {
+		for _, metric := range metrics {
+			ch <- metric
+		}
+		close(ch)
+	}()
+	return ch
+}
+
+func (s *PowerScaleService) volumeQuotaMetricsServer(metrics []*VolumeQuotaMetricsRecord) <-chan *VolumeQuotaMetricsRecord {
+	ch := make(chan *VolumeQuotaMetricsRecord, len(metrics))
+	go func() {
+		for _, metric := range metrics {
+			ch <- metric
+		}
+		close(ch)
+	}()
+	return ch
+}
+
+func (s *PowerScaleService) clusterCapacityStatsServer(metrics []*ClusterCapacityStatsMetricsRecord) <-chan *ClusterCapacityStatsMetricsRecord {
+	ch := make(chan *ClusterCapacityStatsMetricsRecord, len(metrics))
+	go func() {
+		for _, metric := range metrics {
+			ch <- metric
+		}
+		close(ch)
+	}()
+	return ch
+}
+
+func (s *PowerScaleService) clusterPerformanceStatsServer(metrics []*ClusterPerformanceStatsMetricsRecord) <-chan *ClusterPerformanceStatsMetricsRecord {
+	ch := make(chan *ClusterPerformanceStatsMetricsRecord, len(metrics))
+	go func() {
+		for _, metric := range metrics {
+			ch <- metric
+		}
+		close(ch)
+	}()
+	return ch
+}
+
 // gatherVolumeQuotaMetrics will return a channel of volume metrics based on the input of volumes
 func (s *PowerScaleService) gatherVolumeQuotaMetrics(ctx context.Context, cluster2Quotas map[string]gopowerscale.QuotaList,
 	volumes <-chan k8s.VolumeInfo,
 ) <-chan *VolumeQuotaMetricsRecord {
-	start := time.Now()
-	defer s.timeSince(start, "gatherVolumeQuotaMetrics")
-
 	ch := make(chan *VolumeQuotaMetricsRecord)
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, s.MaxPowerScaleConnections)
 
 	go func() {
+		start := time.Now()
+		defer s.timeSince(start, "gatherVolumeQuotaMetrics")
 		storageClasses := make(map[string]v1.StorageClass)
 		scs, err := s.StorageClassFinder.GetStorageClasses(ctx)
 		if err != nil {
-			s.Logger.WithError(err).Error("failed to get storage classes, skip")
+			csmlog.Errorf("failed to get storage classes, skip: %v", err)
 		}
 		for _, sc := range scs {
 			storageClasses[sc.Name] = sc
@@ -339,7 +441,7 @@ func (s *PowerScaleService) gatherVolumeQuotaMetrics(ctx context.Context, cluste
 				// VolumeHandle is of the format "volumeHandle: k8s-2217be0fe2=_=_=5=_=_=System=_=_=PIE-Isilon-X"
 				volumeProperties := strings.Split(volume.VolumeHandle, "=_=_=")
 				if len(volumeProperties) != ExpectedVolumeHandleProperties {
-					s.Logger.WithField("volume_handle", volume.VolumeHandle).Warn("unable to get VolumeID and ClusterID from volume handle")
+					csmlog.WithFields(csmlog.Fields{"volume_handle": volume.VolumeHandle}).Warn("unable to get VolumeID and ClusterID from volume handle")
 					return
 				}
 
@@ -364,11 +466,11 @@ func (s *PowerScaleService) gatherVolumeQuotaMetrics(ctx context.Context, cluste
 				if volumeMeta.IsiPath == "" {
 					if sc, ok := storageClasses[volumeMeta.StorageClass]; ok {
 						path := sc.Parameters["IsiPath"]
-						s.Logger.WithFields(logrus.Fields{"volume_id": volumeMeta.ID, "storage_class": volumeMeta.StorageClass, "isiPath": path}).Info("setting storage_class_isiPath to volume_isiPath")
+						csmlog.WithFields(csmlog.Fields{"volume_id": volumeMeta.ID, "storage_class": volumeMeta.StorageClass, "isiPath": path}).Info("setting storage_class_isiPath to volume_isiPath")
 						volumeMeta.IsiPath = path
 					}
 					if volumeMeta.IsiPath == "" {
-						s.Logger.WithFields(logrus.Fields{"volume_id": volumeMeta.ID, "storage_class": volumeMeta.StorageClass}).Warn("could not find a StorageClass for Volume, setting client_isiPath to volume_isiPath")
+						csmlog.WithFields(csmlog.Fields{"volume_id": volumeMeta.ID, "storage_class": volumeMeta.StorageClass}).Warn("could not find a StorageClass for Volume, setting client_isiPath to volume_isiPath")
 						volumeMeta.IsiPath, _ = s.getClientIsiPath(ctx, clusterName)
 					}
 				}
@@ -382,7 +484,7 @@ func (s *PowerScaleService) gatherVolumeQuotaMetrics(ctx context.Context, cluste
 					}
 				}
 				if volQuota == nil {
-					s.Logger.WithError(err).WithField("volume_id", volumeMeta.ID).Error("getting quota metrics")
+					csmlog.Errorf("getting quota metrics for volume %s: %v", volumeMeta.ID, err)
 					return
 				}
 
@@ -403,7 +505,7 @@ func (s *PowerScaleService) gatherVolumeQuotaMetrics(ctx context.Context, cluste
 					quotaSubscribedPct:    subscribedQuotaPct,
 					hardQuotaRemainingPct: hardQuotaRemainingPct,
 				}
-				s.Logger.Debugf("volume quota metrics %+v", *metric)
+				csmlog.Debugf("volume quota metrics %+v", *metric)
 
 				ch <- metric
 			}(volume)
@@ -417,23 +519,22 @@ func (s *PowerScaleService) gatherVolumeQuotaMetrics(ctx context.Context, cluste
 }
 
 // pushVolumeQuotaMetrics will push the provided channel of volume metrics to a data collector
-func (s *PowerScaleService) pushVolumeQuotaMetrics(ctx context.Context, volumeMetrics <-chan *VolumeQuotaMetricsRecord) <-chan string {
-	start := time.Now()
-	defer s.timeSince(start, "pushVolumeQuotaMetrics")
+func (s *PowerScaleService) pushVolumeQuotaMetrics(ctx context.Context, volumeMetrics <-chan *VolumeQuotaMetricsRecord) <-chan obsExportResult {
 	var wg sync.WaitGroup
 
-	ch := make(chan string)
+	ch := make(chan obsExportResult)
 	go func() {
+		start := time.Now()
+		defer s.timeSince(start, "pushVolumeQuotaMetrics")
 		for metrics := range volumeMetrics {
 			wg.Add(1)
 			go func(metrics *VolumeQuotaMetricsRecord) {
 				defer wg.Done()
 				err := s.MetricsWrapper.RecordVolumeQuota(ctx, metrics.volumeMeta, metrics)
 				if err != nil {
-					s.Logger.WithError(err).WithField("volume_id", metrics.volumeMeta.ID).Error("recording metrics for volume")
-				} else {
-					ch <- metrics.volumeMeta.ID
+					csmlog.Errorf("recording metrics for volume %s: %v", metrics.volumeMeta.ID, err)
 				}
+				ch <- obsExportResult{clusterName: metrics.volumeMeta.ClusterName, metricCount: obsVolumeQuotaMetricCount, exported: err == nil}
 			}(metrics)
 		}
 		wg.Wait()
@@ -444,7 +545,8 @@ func (s *PowerScaleService) pushVolumeQuotaMetrics(ctx context.Context, volumeMe
 }
 
 func (s *PowerScaleService) getPowerScaleClient(_ context.Context, clusterName string) (PowerScaleClient, error) {
-	if goPowerScaleClient, ok := s.PowerScaleClients[clusterName]; ok {
+	clients := s.GetPowerScaleClients()
+	if goPowerScaleClient, ok := clients[clusterName]; ok {
 		return goPowerScaleClient, nil
 	}
 	return nil, fmt.Errorf("unable to find client")
@@ -460,10 +562,36 @@ func (s *PowerScaleService) getClientIsiPath(_ context.Context, clusterName stri
 
 // timeSince will log the amount of time spent in a given function
 func (s *PowerScaleService) timeSince(start time.Time, fName string) {
-	s.Logger.WithFields(logrus.Fields{
+	csmlog.WithFields(csmlog.Fields{
 		"duration": fmt.Sprintf("%v", time.Since(start)),
 		"function": fName,
 	}).Info("function duration")
+}
+
+func collectionRatePerSecond(metricCount int, elapsed time.Duration) float64 {
+	if metricCount <= 0 || elapsed <= 0 {
+		return 0
+	}
+	return float64(metricCount) / elapsed.Seconds()
+}
+
+func (s *PowerScaleService) recordObservabilityMetrics(totalElapsed, processingLatency time.Duration, clusterConnected map[string]bool, collectionCounts map[string]int, exportFailed map[string]bool) {
+	if s.ObsInstrumenter == nil {
+		return
+	}
+
+	for clusterName, connected := range clusterConnected {
+		s.ObsInstrumenter.SetArrayConnectivity(clusterName, connected)
+		s.ObsInstrumenter.RecordCollectionRate(clusterName, collectionRatePerSecond(collectionCounts[clusterName], totalElapsed))
+		s.ObsInstrumenter.RecordProcessingLatency(clusterName, processingLatency.Seconds())
+		status := "success"
+		if !connected {
+			status = "error"
+		} else if exportFailed[clusterName] {
+			status = "failure"
+		}
+		s.ObsInstrumenter.RecordExportSuccess(clusterName, status)
+	}
 }
 
 // ExportClusterCapacityMetrics records cluster capacity metrics
@@ -472,25 +600,42 @@ func (s *PowerScaleService) ExportClusterCapacityMetrics(ctx context.Context) {
 	defer s.timeSince(start, "ExportClusterCapacityMetrics")
 
 	if s.MetricsWrapper == nil {
-		s.Logger.Warn("no MetricsWrapper provided for getting ExportClusterCapacityMetrics")
+		csmlog.Warn("no MetricsWrapper provided for getting ExportClusterCapacityMetrics")
 		return
 	}
 
 	if s.MaxPowerScaleConnections == 0 {
-		s.Logger.Debug("Using DefaultMaxPowerScaleConnections")
+		csmlog.Debug("Using DefaultMaxPowerScaleConnections")
 		s.MaxPowerScaleConnections = DefaultMaxPowerScaleConnections
 	}
 
-	for range s.pushClusterCapacityStatsMetrics(ctx, s.gatherClusterCapacityStatsMetrics(ctx)) {
-		// consume the channel until it is empty and closed
-	} // revive:disable-line:empty-block
+	clients := s.GetPowerScaleClients()
+	successClusters := make(map[string]bool)
+	collectionCounts := make(map[string]int)
+	exportFailed := make(map[string]bool)
+	clusterCapacityMetrics := make([]*ClusterCapacityStatsMetricsRecord, 0, len(clients))
+	for metric := range s.gatherClusterCapacityStatsMetrics(ctx) {
+		clusterCapacityMetrics = append(clusterCapacityMetrics, metric)
+	}
+
+	processingStart := time.Now()
+	for result := range s.pushClusterCapacityStatsMetrics(ctx, s.clusterCapacityStatsServer(clusterCapacityMetrics)) {
+		successClusters[result.clusterName] = true
+		collectionCounts[result.clusterName] += result.metricCount
+		exportFailed[result.clusterName] = exportFailed[result.clusterName] || !result.exported
+	}
+	processingLatency := time.Since(processingStart)
+
+	clusterConnected := make(map[string]bool, len(clients))
+	for clusterName := range clients {
+		clusterConnected[clusterName] = successClusters[clusterName]
+	}
+
+	s.recordObservabilityMetrics(time.Since(start), processingLatency, clusterConnected, collectionCounts, exportFailed)
 }
 
 // gatherClusterStatsMetrics will return a channel of array statistics metric
 func (s *PowerScaleService) gatherClusterCapacityStatsMetrics(ctx context.Context) <-chan *ClusterCapacityStatsMetricsRecord {
-	start := time.Now()
-	defer s.timeSince(start, "gatherClusterCapacityStatsMetrics")
-
 	ch := make(chan *ClusterCapacityStatsMetricsRecord)
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, s.MaxPowerScaleConnections)
@@ -512,7 +657,10 @@ func (s *PowerScaleService) gatherClusterCapacityStatsMetrics(ctx context.Contex
 	}
 
 	go func() {
-		for clusterName, goPowerScaleClient := range s.PowerScaleClients {
+		start := time.Now()
+		defer s.timeSince(start, "gatherClusterCapacityStatsMetrics")
+		clients := s.GetPowerScaleClients()
+		for clusterName, goPowerScaleClient := range clients {
 			sem <- struct{}{}
 			wg.Add(1)
 			go func(clusterName string, goPowerScaleClient PowerScaleClient) {
@@ -522,7 +670,7 @@ func (s *PowerScaleService) gatherClusterCapacityStatsMetrics(ctx context.Contex
 				}()
 				stats, err := goPowerScaleClient.GetFloatStatistics(ctx, statsKeys)
 				if err != nil {
-					s.Logger.WithError(err).WithField("cluster_name", clusterName).Error("getting capacity stats for cluster")
+					csmlog.Errorf("getting capacity stats for cluster %s: %v", clusterName, err)
 					return
 				}
 
@@ -538,7 +686,7 @@ func (s *PowerScaleService) gatherClusterCapacityStatsMetrics(ctx context.Contex
 				}
 
 				ch <- metric
-				s.Logger.Debugf("cluster capacity stats metrics %+v", *metric)
+				csmlog.Debugf("cluster capacity stats metrics %+v", *metric)
 			}(clusterName, goPowerScaleClient)
 		}
 		wg.Wait()
@@ -550,23 +698,23 @@ func (s *PowerScaleService) gatherClusterCapacityStatsMetrics(ctx context.Contex
 }
 
 // pushClusterStatsMetrics will push the provided channel of cluster stats metrics to a data collector
-func (s *PowerScaleService) pushClusterCapacityStatsMetrics(ctx context.Context, clusterStatistics <-chan *ClusterCapacityStatsMetricsRecord) <-chan *ClusterCapacityStatsMetricsRecord {
-	start := time.Now()
-	defer s.timeSince(start, "pushClusterCapacityStatsMetrics")
+func (s *PowerScaleService) pushClusterCapacityStatsMetrics(ctx context.Context, clusterStatistics <-chan *ClusterCapacityStatsMetricsRecord) <-chan obsExportResult {
 	var wg sync.WaitGroup
 
-	ch := make(chan *ClusterCapacityStatsMetricsRecord)
+	ch := make(chan obsExportResult)
 	go func() {
+		start := time.Now()
+		defer s.timeSince(start, "pushClusterCapacityStatsMetrics")
 		for m := range clusterStatistics {
 			wg.Add(1)
 			go func(metric *ClusterCapacityStatsMetricsRecord) {
 				defer wg.Done()
 				err := s.MetricsWrapper.RecordClusterCapacityStatsMetrics(ctx, metric)
 				if err != nil {
-					s.Logger.WithError(err).Errorf("recording capcity stats for PowerScale cluster, metric=%+v", *metric)
+					csmlog.Errorf("recording capcity stats for PowerScale cluster, metric=%+v: %v", err, *metric)
 				}
 
-				ch <- metric
+				ch <- obsExportResult{clusterName: metric.ClusterName, metricCount: obsClusterCapacityMetricCount, exported: err == nil}
 			}(m)
 		}
 		wg.Wait()
@@ -582,25 +730,42 @@ func (s *PowerScaleService) ExportClusterPerformanceMetrics(ctx context.Context)
 	defer s.timeSince(start, "ExportClusterPerformanceMetrics")
 
 	if s.MetricsWrapper == nil {
-		s.Logger.Warn("no MetricsWrapper provided for getting ExportClusterPerformanceMetrics")
+		csmlog.Warn("no MetricsWrapper provided for getting ExportClusterPerformanceMetrics")
 		return
 	}
 
 	if s.MaxPowerScaleConnections == 0 {
-		s.Logger.Debug("Using DefaultMaxPowerScaleConnections")
+		csmlog.Debug("Using DefaultMaxPowerScaleConnections")
 		s.MaxPowerScaleConnections = DefaultMaxPowerScaleConnections
 	}
 
-	for range s.pushClusterPerformanceStatsMetrics(ctx, s.gatherClusterPerformanceStatsMetrics(ctx)) {
-		// consume the channel until it is empty and closed
-	} // revive:disable-line:empty-block
+	clients := s.GetPowerScaleClients()
+	successClusters := make(map[string]bool)
+	collectionCounts := make(map[string]int)
+	exportFailed := make(map[string]bool)
+	clusterPerformanceMetrics := make([]*ClusterPerformanceStatsMetricsRecord, 0, len(clients))
+	for metric := range s.gatherClusterPerformanceStatsMetrics(ctx) {
+		clusterPerformanceMetrics = append(clusterPerformanceMetrics, metric)
+	}
+
+	processingStart := time.Now()
+	for result := range s.pushClusterPerformanceStatsMetrics(ctx, s.clusterPerformanceStatsServer(clusterPerformanceMetrics)) {
+		successClusters[result.clusterName] = true
+		collectionCounts[result.clusterName] += result.metricCount
+		exportFailed[result.clusterName] = exportFailed[result.clusterName] || !result.exported
+	}
+	processingLatency := time.Since(processingStart)
+
+	clusterConnected := make(map[string]bool, len(clients))
+	for clusterName := range clients {
+		clusterConnected[clusterName] = successClusters[clusterName]
+	}
+
+	s.recordObservabilityMetrics(time.Since(start), processingLatency, clusterConnected, collectionCounts, exportFailed)
 }
 
 // gatherClusterPerformanceStatsMetrics will return a channel of array statistics metric
 func (s *PowerScaleService) gatherClusterPerformanceStatsMetrics(ctx context.Context) <-chan *ClusterPerformanceStatsMetricsRecord {
-	start := time.Now()
-	defer s.timeSince(start, "gatherClusterPerformanceStatsMetrics")
-
 	ch := make(chan *ClusterPerformanceStatsMetricsRecord)
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, s.MaxPowerScaleConnections)
@@ -632,7 +797,10 @@ func (s *PowerScaleService) gatherClusterPerformanceStatsMetrics(ctx context.Con
 	}
 
 	go func() {
-		for clusterName, goPowerScaleClient := range s.PowerScaleClients {
+		start := time.Now()
+		defer s.timeSince(start, "gatherClusterPerformanceStatsMetrics")
+		clients := s.GetPowerScaleClients()
+		for clusterName, goPowerScaleClient := range clients {
 			sem <- struct{}{}
 			wg.Add(1)
 			go func(clusterName string, goPowerScaleClient PowerScaleClient) {
@@ -642,7 +810,7 @@ func (s *PowerScaleService) gatherClusterPerformanceStatsMetrics(ctx context.Con
 				}()
 				stats, err := goPowerScaleClient.GetFloatStatistics(ctx, statsKeys)
 				if err != nil {
-					s.Logger.WithError(err).WithField("cluster_name", clusterName).Error("getting performance stats for cluster")
+					csmlog.Errorf("getting performance stats for cluster %s: %v", clusterName, err)
 					return
 				}
 
@@ -658,7 +826,7 @@ func (s *PowerScaleService) gatherClusterPerformanceStatsMetrics(ctx context.Con
 				}
 
 				ch <- metric
-				s.Logger.Debugf("cluster performance stats metrics %+v", *metric)
+				csmlog.Debugf("cluster performance stats metrics %+v", *metric)
 			}(clusterName, goPowerScaleClient)
 		}
 		wg.Wait()
@@ -670,23 +838,23 @@ func (s *PowerScaleService) gatherClusterPerformanceStatsMetrics(ctx context.Con
 }
 
 // pushClusterPerformanceStatsMetrics will push the provided channel of cluster performance stats metrics to a data collector
-func (s *PowerScaleService) pushClusterPerformanceStatsMetrics(ctx context.Context, clusterStatistics <-chan *ClusterPerformanceStatsMetricsRecord) <-chan *ClusterPerformanceStatsMetricsRecord {
-	start := time.Now()
-	defer s.timeSince(start, "pushClusterPerformanceStatsMetrics")
+func (s *PowerScaleService) pushClusterPerformanceStatsMetrics(ctx context.Context, clusterStatistics <-chan *ClusterPerformanceStatsMetricsRecord) <-chan obsExportResult {
 	var wg sync.WaitGroup
 
-	ch := make(chan *ClusterPerformanceStatsMetricsRecord)
+	ch := make(chan obsExportResult)
 	go func() {
+		start := time.Now()
+		defer s.timeSince(start, "pushClusterPerformanceStatsMetrics")
 		for m := range clusterStatistics {
 			wg.Add(1)
 			go func(metric *ClusterPerformanceStatsMetricsRecord) {
 				defer wg.Done()
 				err := s.MetricsWrapper.RecordClusterPerformanceStatsMetrics(ctx, metric)
 				if err != nil {
-					s.Logger.WithError(err).Errorf("recording performance stats for PowerScale cluster, metric=%+v", *metric)
+					csmlog.Errorf("recording performance stats for PowerScale cluster, metric=%+v: %v", err, *metric)
 				}
 
-				ch <- metric
+				ch <- obsExportResult{clusterName: metric.ClusterName, metricCount: obsClusterPerformanceMetricCount, exported: err == nil}
 			}(m)
 		}
 		wg.Wait()
@@ -702,13 +870,13 @@ func (s *PowerScaleService) ExportTopologyMetrics(ctx context.Context) {
 	defer s.timeSince(start, "ExportTopologyMetrics")
 
 	if s.MetricsWrapper == nil {
-		s.Logger.Warn("no MetricsWrapper provided for getting ExportTopologyMetrics")
+		csmlog.Warn("no MetricsWrapper provided for getting ExportTopologyMetrics")
 		return
 	}
 
 	pvs, err := s.VolumeFinder.GetPersistentVolumes(ctx)
 	if err != nil {
-		s.Logger.WithError(err).Error("getting persistent volumes")
+		csmlog.Errorf("getting persistent volumes: %v", err)
 		return
 	}
 
@@ -735,7 +903,7 @@ func (s *PowerScaleService) gatherTopologyMetrics(volumes <-chan k8s.VolumeInfo)
 				// VolumeHandle is of the format "volumeHandle: k8s-2217be0fe2=_=_=5=_=_=System=_=_=PIE-Isilon-X"
 				volumeProperties := strings.Split(volume.VolumeHandle, "=_=_=")
 				if len(volumeProperties) != ExpectedVolumeHandleProperties {
-					s.Logger.WithField("volume_handle", volume.VolumeHandle).Warn("unable to get VolumeID and ClusterID from volume handle")
+					csmlog.WithFields(csmlog.Fields{"volume_handle": volume.VolumeHandle}).Warn("unable to get VolumeID and ClusterID from volume handle")
 					return
 				}
 
@@ -786,7 +954,7 @@ func (s *PowerScaleService) pushTopologyMetrics(ctx context.Context, topologyMet
 				defer wg.Done()
 				err := s.MetricsWrapper.RecordTopologyMetrics(ctx, metrics.topologyMeta, metrics)
 				if err != nil {
-					s.Logger.WithError(err).WithField("volume_id", metrics.topologyMeta.PersistentVolume).Error("recording topology metrics for volume")
+					csmlog.Errorf("recording topology metrics for volume %s: %v", metrics.topologyMeta.PersistentVolume, err)
 				} else {
 					ch <- metrics
 				}

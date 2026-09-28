@@ -19,7 +19,7 @@ package k8s
 import (
 	"context"
 
-	"github.com/sirupsen/logrus"
+	"github.com/dell/csmlog"
 	v1 "k8s.io/api/storage/v1"
 )
 
@@ -41,7 +41,6 @@ type ClusterName struct {
 type StorageClassFinder struct {
 	API          StorageClassGetter
 	ClusterNames []ClusterName
-	Logger       *logrus.Logger
 }
 
 // GetStorageClasses will return a list of storage classes that match the given DriverName in Kubernetes
@@ -50,7 +49,7 @@ func (f *StorageClassFinder) GetStorageClasses(_ context.Context) ([]v1.StorageC
 
 	classes, err := f.API.GetStorageClasses()
 	if err != nil {
-		f.Logger.WithError(err).Warn("getting storage classes")
+		csmlog.Warnf("getting storage classes: %v", err)
 		return nil, err
 	}
 

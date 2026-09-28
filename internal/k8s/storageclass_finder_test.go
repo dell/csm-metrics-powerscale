@@ -23,7 +23,6 @@ import (
 
 	"github.com/dell/csm-metrics-powerscale/internal/k8s"
 	"github.com/dell/csm-metrics-powerscale/internal/k8s/mocks"
-	"github.com/sirupsen/logrus"
 
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
@@ -208,31 +207,32 @@ func Test_K8sStorageClassFinder(t *testing.T) {
 
 			finder := k8s.StorageClassFinder{API: api, ClusterNames: ids}
 
-			return finder, check(hasNoError, checkExpectedOutput([]v1.StorageClass{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "isilon",
+			return finder, check(hasNoError, checkExpectedOutput(
+				[]v1.StorageClass{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "isilon",
+						},
+						Provisioner: "csi-isilon.dellemc.com",
+						Parameters: map[string]string{
+							"AccessZone":               "System",
+							"IsiPath":                  "/ifs/data/csi",
+							"IsiVolumePathPermissions": "0777",
+						},
 					},
-					Provisioner: "csi-isilon.dellemc.com",
-					Parameters: map[string]string{
-						"AccessZone":               "System",
-						"IsiPath":                  "/ifs/data/csi",
-						"IsiVolumePathPermissions": "0777",
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "another-isilon",
+						},
+						Provisioner: "csi-isilon.dellemc.com",
+						Parameters: map[string]string{
+							"AccessZone":               "System",
+							"ClusterName":              "pieisi93x",
+							"IsiPath":                  "/ifs/data/csi",
+							"IsiVolumePathPermissions": "0777",
+						},
 					},
 				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "another-isilon",
-					},
-					Provisioner: "csi-isilon.dellemc.com",
-					Parameters: map[string]string{
-						"AccessZone":               "System",
-						"ClusterName":              "pieisi93x",
-						"IsiPath":                  "/ifs/data/csi",
-						"IsiVolumePathPermissions": "0777",
-					},
-				},
-			},
 			)), ctrl
 		},
 		"success selecting storage classes matching one of two driver names": func(*testing.T) (k8s.StorageClassFinder, []checkFn, *gomock.Controller) {
@@ -275,27 +275,28 @@ func Test_K8sStorageClassFinder(t *testing.T) {
 
 			finder := k8s.StorageClassFinder{API: api, ClusterNames: ids}
 
-			return finder, check(hasNoError, checkExpectedOutput([]v1.StorageClass{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "isilon",
-					},
-					Provisioner: "csi-isilon.dellemc.com",
-					Parameters: map[string]string{
-						"AccessZone":               "System",
-						"ClusterName":              "pieisi93x",
-						"IsiPath":                  "/ifs/data/csi",
-						"IsiVolumePathPermissions": "0777",
+			return finder, check(hasNoError, checkExpectedOutput(
+				[]v1.StorageClass{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "isilon",
+						},
+						Provisioner: "csi-isilon.dellemc.com",
+						Parameters: map[string]string{
+							"AccessZone":               "System",
+							"ClusterName":              "pieisi93x",
+							"IsiPath":                  "/ifs/data/csi",
+							"IsiVolumePathPermissions": "0777",
+						},
 					},
 				},
-			},
 			)), ctrl
 		},
 		"error calling k8s": func(*testing.T) (k8s.StorageClassFinder, []checkFn, *gomock.Controller) {
 			ctrl := gomock.NewController(t)
 			api := mocks.NewMockStorageClassGetter(ctrl)
 			api.EXPECT().GetStorageClasses().Times(1).Return(nil, errors.New("error"))
-			finder := k8s.StorageClassFinder{API: api, Logger: logrus.New()}
+			finder := k8s.StorageClassFinder{API: api}
 			return finder, check(hasError), ctrl
 		},
 	}
